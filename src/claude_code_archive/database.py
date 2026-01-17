@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from .models import Message, Session, ToolCall, ToolResult
+from .models import Session
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (

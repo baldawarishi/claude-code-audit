@@ -110,7 +110,7 @@ def sync(ctx, projects_dir: Optional[Path], archive_dir: Optional[Path], project
 
         # Show stats
         stats = db.get_stats()
-        click.echo(f"\nArchive stats:")
+        click.echo("\nArchive stats:")
         click.echo(f"  Sessions: {stats['total_sessions']}")
         click.echo(f"  Messages: {stats['total_messages']}")
         click.echo(f"  Tool calls: {stats['total_tool_calls']}")
@@ -186,7 +186,7 @@ def render(ctx, archive_dir: Optional[Path], output_dir: Optional[Path], session
             # Reconstruct session object from database
             from .models import Message, Session, ToolCall, ToolResult
 
-            messages = []
+            messages: list[Message] = []
             for msg in db.get_messages_for_session(session_dict["id"]):
                 messages.append(Message(
                     id=msg["id"],
@@ -213,9 +213,9 @@ def render(ctx, archive_dir: Optional[Path], output_dir: Optional[Path], session
                 )
                 tool_calls.append(tool_call)
                 # Attach to message
-                for msg in messages:
-                    if msg.id == tc["message_id"]:
-                        msg.tool_calls.append(tool_call)
+                for message in messages:
+                    if message.id == tc["message_id"]:
+                        message.tool_calls.append(tool_call)
                         break
 
             tool_results = []

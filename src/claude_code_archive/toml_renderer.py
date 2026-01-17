@@ -96,10 +96,10 @@ def render_session_toml(session: Session) -> str:
 
     # Group messages into turns
     turn_number = 0
-    current_user_content = None
-    current_user_timestamp = None
-    pending_assistant_content = []
-    pending_tool_calls = []
+    current_user_content: Optional[str] = None
+    current_user_timestamp: Optional[str] = None
+    pending_assistant_content: list[str] = []
+    pending_tool_calls: list[tuple[ToolCall, Optional[str]]] = []
 
     def flush_turn():
         nonlocal turn_number, current_user_content, current_user_timestamp

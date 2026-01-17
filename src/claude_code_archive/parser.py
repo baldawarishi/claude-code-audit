@@ -125,7 +125,6 @@ def parse_session(file_path: Path, project_name: str) -> Session:
             if not session.ended_at or timestamp > session.ended_at:
                 session.ended_at = timestamp
 
-        role = message_data.get("role", "")
         content = message_data.get("content", "")
         msg_uuid = entry.get("uuid", str(uuid.uuid4()))
 

@@ -13,7 +13,11 @@ claude-code-archive = "claude_code_archive.cli:main"
 
 [tool.uv]
 package = true
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=8.0",
+    "mypy>=1.0",
+    "ruff>=0.4",
+]
 
 [build-system]
 requires = ["hatchling"]

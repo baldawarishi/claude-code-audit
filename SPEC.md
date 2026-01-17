@@ -129,6 +129,20 @@ CREATE INDEX idx_sessions_started ON sessions(started_at);
 CREATE INDEX idx_sessions_parent ON sessions(parent_session_id);
 ```
 
+## Parsing Rules
+
+### Project Name Extraction
+Directory names like `-Users-john-Development-myproject` are converted to readable names:
+1. Strip common prefixes: `-home-`, `-Users-`, `-mnt-c-Users-`
+2. Skip intermediate directories: `projects`, `code`, `repos`, `src`, `dev`, `work`, `documents`, `development`, `github`, `git`
+3. Join remaining meaningful parts with dashes
+
+### Message Filtering
+Skip entries during parsing:
+- `isMeta: true` - system metadata messages
+- Content starting with `<command-name>` or `<local-command-` - CLI commands
+- Entry types: `file-history-snapshot`, `queue-operation`, `progress`, `system`
+
 ## CLI Commands
 
 ### `sync` - Archive sessions to SQLite
@@ -136,8 +150,9 @@ CREATE INDEX idx_sessions_parent ON sessions(parent_session_id);
 claude-code-archive sync [--projects-dir PATH] [--archive-dir PATH] [--project TEXT] [--force]
 ```
 - Incremental by default (skips existing sessions)
-- Extracts project name from directory path
+- Extracts project name from directory path (see Parsing Rules)
 - Aggregates token usage per session
+- Runs database migrations automatically
 
 ### `render` - Generate TOML transcripts
 ```
@@ -210,16 +225,14 @@ src/claude_code_archive/
 
 ## Planned Enhancements
 
-### Phase 1: Missing Fields ✅
-- [x] Capture `thinking` blocks (currently filtered)
-- [x] Capture `slug` (human-readable session name)
-- [x] Capture `summary` from summary-type entries
-- [x] Capture `stop_reason` from message
-- [x] Capture `is_sidechain` flag
+### Completed
+- [x] Phase 1: Capture `thinking`, `slug`, `summary`, `stop_reason`, `is_sidechain`
+- [x] Better project name extraction (simonw algorithm)
+- [x] Filter meta/system messages from output
+- [x] Database migrations for schema updates
 
 ### Phase 2: Agent Relationships
 - [ ] Capture `agentId` to link subagent sessions to parent
-- [ ] Add `parent_session_id` to sessions table
 - [ ] Query to reconstruct full agent tree
 
 ### Phase 3: Export Formats

@@ -64,6 +64,15 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
 """
 
+# Migrations for existing databases (columns added in Phase 1)
+MIGRATIONS = [
+    "ALTER TABLE sessions ADD COLUMN slug TEXT",
+    "ALTER TABLE sessions ADD COLUMN summary TEXT",
+    "ALTER TABLE messages ADD COLUMN thinking TEXT",
+    "ALTER TABLE messages ADD COLUMN stop_reason TEXT",
+    "ALTER TABLE messages ADD COLUMN is_sidechain BOOLEAN DEFAULT FALSE",
+]
+
 
 class Database:
     """SQLite database for storing archived sessions."""
@@ -79,6 +88,12 @@ class Database:
             self.conn = sqlite3.connect(self.db_path)
             self.conn.row_factory = sqlite3.Row
             self.conn.executescript(SCHEMA)
+            # Run migrations for existing databases
+            for migration in MIGRATIONS:
+                try:
+                    self.conn.execute(migration)
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
             self.conn.commit()
         return self.conn
 

@@ -1,30 +1,41 @@
 # claude-code-archive Specification
 
-## Purpose
+Archive Claude Code transcripts from `~/.claude/projects/` into SQLite with TOML export.
 
-Archive Claude Code transcripts from `~/.claude/projects/` into a structured SQLite database with optional TOML export for human-readable transcripts.
+**Reference**: [simonw/claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) - HTML renderer, source at `src/claude_code_transcripts/__init__.py`
 
 ## Data Flow
 
 ```
-~/.claude/projects/           claude-code-archive sync        archive/sessions.db
-├── {project-dir}/       ──────────────────────────────►    (SQLite)
-│   ├── {uuid}.jsonl                                              │
-│   └── agent-{hash}.jsonl                                        │
-                                                                  │
-                              claude-code-archive render          ▼
-                         ◄────────────────────────────────  archive/transcripts/
-                                                            └── {project}/
-                                                                └── {date}-{id}.toml
+~/.claude/projects/           sync           archive/sessions.db
+├── {project-dir}/       ─────────────►     (SQLite)
+│   ├── {uuid}.jsonl                              │
+│   └── agent-{hash}.jsonl                        │
+                                                  │
+                              render              ▼
+                         ◄─────────────────  archive/transcripts/
+                                             └── {project}/{date}-{id}.toml
 ```
 
-## Source Format (Claude Code JSONL)
+## JSONL Source Format
 
 Each line in `~/.claude/projects/{project-dir}/{session}.jsonl`:
 
+### Entry Types
+| Type | Has Message | Description |
+|------|-------------|-------------|
+| `user` | Yes | User message (may contain tool_result blocks) |
+| `assistant` | Yes | Assistant response (may contain tool_use blocks) |
+| `summary` | No | AI-generated session summary |
+| `system` | No | Telemetry (turn duration, etc.) |
+| `file-history-snapshot` | No | File state snapshots |
+| `queue-operation` | No | Queue management |
+| `progress` | No | Progress indicators |
+
+### Entry Fields
 ```json
 {
-  "type": "user|assistant|file-history-snapshot|queue-operation",
+  "type": "user|assistant|summary|system|...",
   "sessionId": "uuid",
   "uuid": "message-uuid",
   "parentUuid": "parent-uuid|null",
@@ -32,33 +43,27 @@ Each line in `~/.claude/projects/{project-dir}/{session}.jsonl`:
   "cwd": "/working/directory",
   "version": "2.1.9",
   "gitBranch": "branch-name",
+  "slug": "human-readable-session-name",
+  "agentId": "parent-agent-id",
+  "isSidechain": false,
+  "todos": [...],
+  "summary": "AI-generated summary text",
   "message": {
     "role": "user|assistant",
     "content": "string | array of content blocks",
     "model": "claude-opus-4-5-20251101",
-    "usage": {
-      "input_tokens": 123,
-      "output_tokens": 456,
-      "cache_read_input_tokens": 789
-    }
+    "stop_reason": "end_turn|max_tokens|tool_use",
+    "usage": {"input_tokens": 123, "output_tokens": 456, "cache_read_input_tokens": 789}
   }
 }
 ```
 
 ### Content Block Types
-
 ```json
-// Text
 {"type": "text", "text": "..."}
-
-// Tool use (assistant)
-{"type": "tool_use", "id": "toolu_xxx", "name": "Bash", "input": {...}}
-
-// Tool result (user message containing result)
-{"type": "tool_result", "tool_use_id": "toolu_xxx", "content": "..."}
-
-// Thinking (filtered out)
 {"type": "thinking", "thinking": "..."}
+{"type": "tool_use", "id": "toolu_xxx", "name": "Bash", "input": {...}}
+{"type": "tool_result", "tool_use_id": "toolu_xxx", "content": "...", "is_error": false}
 ```
 
 ## SQLite Schema
@@ -69,25 +74,31 @@ CREATE TABLE sessions (
     project TEXT NOT NULL,
     cwd TEXT,
     git_branch TEXT,
+    slug TEXT,                    -- human-readable name
+    parent_session_id TEXT,       -- for agent sessions
+    summary TEXT,                 -- AI-generated summary
     started_at TEXT,
     ended_at TEXT,
     claude_version TEXT,
+    model TEXT,
     total_input_tokens INTEGER DEFAULT 0,
     total_output_tokens INTEGER DEFAULT 0,
-    total_cache_read_tokens INTEGER DEFAULT 0,
-    model TEXT
+    total_cache_read_tokens INTEGER DEFAULT 0
 );
 
 CREATE TABLE messages (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),
     parent_uuid TEXT,
-    type TEXT NOT NULL,  -- user, assistant, tool_result
+    type TEXT NOT NULL,           -- user, assistant, tool_result
     timestamp TEXT,
     content TEXT,
+    thinking TEXT,                -- thinking block content (if captured)
     model TEXT,
+    stop_reason TEXT,             -- end_turn, max_tokens, tool_use
     input_tokens INTEGER,
-    output_tokens INTEGER
+    output_tokens INTEGER,
+    is_sidechain BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE tool_calls (
@@ -115,6 +126,32 @@ CREATE INDEX idx_tool_calls_session ON tool_calls(session_id);
 CREATE INDEX idx_tool_results_session ON tool_results(session_id);
 CREATE INDEX idx_sessions_project ON sessions(project);
 CREATE INDEX idx_sessions_started ON sessions(started_at);
+CREATE INDEX idx_sessions_parent ON sessions(parent_session_id);
+```
+
+## CLI Commands
+
+### `sync` - Archive sessions to SQLite
+```
+claude-code-archive sync [--projects-dir PATH] [--archive-dir PATH] [--project TEXT] [--force]
+```
+- Incremental by default (skips existing sessions)
+- Extracts project name from directory path
+- Aggregates token usage per session
+
+### `render` - Generate TOML transcripts
+```
+claude-code-archive render [--archive-dir PATH] [--output-dir PATH] [--session TEXT] [--project TEXT] [--stdout]
+```
+
+### `stats` - Display statistics
+```
+claude-code-archive stats [--archive-dir PATH]
+```
+
+### `config` - Manage configuration
+```
+claude-code-archive config [--archive-dir PATH] [--projects-dir PATH] [--show]
 ```
 
 ## TOML Output Format
@@ -122,155 +159,84 @@ CREATE INDEX idx_sessions_started ON sessions(started_at);
 ```toml
 [session]
 id = "uuid"
+slug = "dapper-questing-pascal"
 project = "project-name"
 cwd = "/working/directory"
 git_branch = "branch"
+summary = "AI-generated session summary"
 started_at = "ISO8601"
 ended_at = "ISO8601"
 model = "claude-opus-4-5-20251101"
-claude_version = "2.1.9"
-input_tokens = 123
-output_tokens = 456
-cache_read_tokens = 789
 
 [[turns]]
 number = 1
 timestamp = "ISO8601"
 
 [turns.user]
-content = '''
-User message content (literal string, no escaping needed)
-'''
+content = '''User message'''
 
 [turns.assistant]
-content = '''
-Assistant response text
-'''
+content = '''Assistant response'''
+thinking = '''Optional thinking content'''
 
 [[turns.assistant.tool_calls]]
 tool = "Bash"
 id = "toolu_xxx"
-timestamp = "ISO8601"
-
 [turns.assistant.tool_calls.input]
 command = "ls -la"
-description = "List files"
-
 [turns.assistant.tool_calls.result]
-content = '''
-Tool output here
-'''
-```
-
-## CLI Commands
-
-### `sync`
-Archive sessions from Claude projects to SQLite.
-
-```
-claude-code-archive sync [OPTIONS]
-
-Options:
-  --projects-dir PATH   Source directory (default: ~/.claude/projects)
-  --archive-dir PATH    Archive directory (default: ~/Development/claude-code-archive/archive)
-  --project TEXT        Filter to specific project
-  --force               Re-archive existing sessions
-```
-
-Behavior:
-- Incremental by default (skips sessions already in database)
-- Extracts project name from directory path
-- Aggregates token usage per session
-- Maps tool results to tool calls via `tool_use_id`
-
-### `render`
-Generate TOML transcripts from archived sessions.
-
-```
-claude-code-archive render [OPTIONS]
-
-Options:
-  --archive-dir PATH    Archive directory
-  --output-dir PATH     Output directory (default: archive/transcripts)
-  --session TEXT        Render specific session (prefix match)
-  --project TEXT        Render all sessions for project
-  --stdout              Output to stdout instead of files
-```
-
-### `stats`
-Display archive statistics.
-
-```
-claude-code-archive stats [OPTIONS]
-
-Options:
-  --archive-dir PATH    Archive directory
-```
-
-### `config`
-Manage configuration.
-
-```
-claude-code-archive config [OPTIONS]
-
-Options:
-  --archive-dir PATH    Set archive directory
-  --projects-dir PATH   Set projects directory
-  --show                Display current configuration
+content = '''Tool output'''
 ```
 
 ## Configuration
 
 Location: `~/.config/claude-code-archive/config.json`
-
 ```json
-{
-  "archive_dir": "/path/to/archive",
-  "projects_dir": "/path/to/.claude/projects"
-}
+{"archive_dir": "/path/to/archive", "projects_dir": "~/.claude/projects"}
 ```
-
-CLI flags override config file values.
 
 ## Module Structure
 
 ```
 src/claude_code_archive/
 ├── __init__.py      # Version
-├── cli.py           # Click CLI entrypoint
-├── config.py        # Configuration management
+├── cli.py           # Click CLI
+├── config.py        # Configuration
 ├── database.py      # SQLite operations
-├── models.py        # Dataclasses (Session, Message, ToolCall, ToolResult)
+├── models.py        # Dataclasses
 ├── parser.py        # JSONL parsing
-└── toml_renderer.py # TOML output generation
+└── toml_renderer.py # TOML generation
 ```
 
-## Testing Requirements
+## Planned Enhancements
 
-1. **Parser tests**: Verify JSONL parsing handles all message types
-2. **Database tests**: CRUD operations, schema creation, incremental sync
-3. **Renderer tests**: TOML output matches expected format
-4. **CLI tests**: Commands execute without error
-5. **Integration test**: Full sync → render cycle with sample data
+### Phase 1: Missing Fields
+- [ ] Capture `thinking` blocks (currently filtered)
+- [ ] Capture `slug` (human-readable session name)
+- [ ] Capture `summary` from summary-type entries
+- [ ] Capture `stop_reason` from message
+- [ ] Capture `is_sidechain` flag
+
+### Phase 2: Agent Relationships
+- [ ] Capture `agentId` to link subagent sessions to parent
+- [ ] Add `parent_session_id` to sessions table
+- [ ] Query to reconstruct full agent tree
+
+### Phase 3: Export Formats
+- [ ] Markdown export (for committing to repos)
+- [ ] JSON export (for external tools)
 
 ## Error Handling
 
-- Invalid JSON lines: Skip with warning, continue processing
-- Missing files: Report error, continue with other files
-- Database errors: Fail fast with descriptive message
-- Empty sessions: Skip (no messages to archive)
+- Invalid JSON lines: Skip with warning, continue
+- Missing files: Report error, continue with others
+- Database errors: Fail fast
+- Empty sessions (no messages): Skip
 
-## Performance Considerations
+## Testing
 
-- Single-threaded processing (Claude Code sessions are typically small)
-- Batch inserts within transaction per session
-- No content truncation in database (full fidelity)
-- TOML rendering truncates large tool results for readability
-
-## Future Considerations (Out of Scope)
-
-- Token cost calculations
-- Web UI
-- Multi-user support
-- Cloud sync
-- Markdown/JSON export (can be added later)
+1. Parser tests: All entry types, content blocks
+2. Database tests: CRUD, schema, incremental sync
+3. Renderer tests: TOML format validation
+4. CLI tests: All commands execute correctly
+5. Integration: Full sync → render cycle

@@ -253,8 +253,15 @@ src/claude_code_archive/
 ├── models.py        # Dataclasses
 ├── parser.py        # JSONL parsing
 ├── toml_renderer.py # TOML generation
-└── analyzer.py      # Pattern detection + recommendation generation (new)
+└── analyzer/        # Pattern detection + recommendation generation
+    ├── __init__.py
+    ├── patterns.py      # Phase 1: pattern detection
+    ├── classifier.py    # Phase 2: LLM classification
+    ├── claude_client.py # Claude SDK wrapper
+    └── renderer.py      # Markdown output generation
 ```
+
+See `docs/analyzer-design.md` for detailed implementation design.
 
 ## Completed Work
 
@@ -265,10 +272,24 @@ src/claude_code_archive/
 
 ## Phase 3: Workflow Analysis (Current)
 
-- [ ] Pattern detection for tool sequences
-- [ ] Scope detection (global vs project vs subfolder)
-- [ ] Recommendation markdown generation with reasoning
-- [ ] Checkbox parsing and apply logic
+### Phase 3a: Detection & Output (no LLM)
+- [ ] Create `analyzer/` subpackage structure
+- [ ] Tool sequence detection (3-grams with Bash depth-2 normalization)
+- [ ] Prompt pattern detection (prefix + sub-section phrases)
+- [ ] File access pattern detection
+- [ ] Sequence merging for overlapping patterns
+- [ ] Pretty JSON output for `--patterns-only`
+- [ ] CLI command with configurable thresholds
+
+### Phase 3b: LLM Classification
+- [ ] Classification prompt template with few-shot examples
+- [ ] Claude SDK client wrapper (async)
+- [ ] Scope detection (global 30% / project / subfolder)
+- [ ] Recommendation markdown generation by scope
+- [ ] Confidence scoring (high/medium/low)
+
+### Phase 3c: Apply Logic (future)
+- [ ] Checkbox parsing
 - [ ] Skill generation
 - [ ] CLAUDE.md updates
 - [ ] Hook suggestions

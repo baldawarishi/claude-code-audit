@@ -30,6 +30,8 @@ def sample_session():
         project="test-project",
         cwd="/test/path",
         git_branch="main",
+        slug="dapper-questing-pascal",
+        summary="A test session summary",
         started_at="2026-01-01T10:00:00Z",
         ended_at="2026-01-01T11:00:00Z",
         claude_version="2.1.9",
@@ -54,6 +56,9 @@ def sample_session():
                 model="claude-opus-4-5-20251101",
                 input_tokens=100,
                 output_tokens=50,
+                thinking="Let me think about this...",
+                stop_reason="end_turn",
+                is_sidechain=False,
             ),
         ],
         tool_calls=[
@@ -113,6 +118,20 @@ class TestDatabase:
         assert len(messages) == 2
         assert messages[0]["content"] == "Hello"
         assert messages[1]["content"] == "Hi there"
+
+    def test_stores_new_session_fields(self, db, sample_session):
+        db.insert_session(sample_session)
+        sessions = db.get_all_sessions()
+        assert sessions[0]["slug"] == "dapper-questing-pascal"
+        assert sessions[0]["summary"] == "A test session summary"
+
+    def test_stores_new_message_fields(self, db, sample_session):
+        db.insert_session(sample_session)
+        messages = db.get_messages_for_session("test-session-123")
+        # Second message is the assistant message with new fields
+        assert messages[1]["thinking"] == "Let me think about this..."
+        assert messages[1]["stop_reason"] == "end_turn"
+        assert messages[1]["is_sidechain"] == 0  # SQLite stores bool as 0/1
 
     def test_get_tool_calls_for_session(self, db, sample_session):
         db.insert_session(sample_session)

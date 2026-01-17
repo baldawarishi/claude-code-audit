@@ -8,6 +8,7 @@ import pytest
 
 from claude_code_archive.parser import (
     extract_text_content,
+    extract_thinking_content,
     extract_tool_calls,
     extract_tool_results,
     parse_jsonl_file,
@@ -41,6 +42,33 @@ class TestExtractTextContent:
     def test_empty_content(self):
         assert extract_text_content([]) == ""
         assert extract_text_content("") == ""
+
+
+class TestExtractThinkingContent:
+    def test_extracts_thinking_block(self):
+        content = [
+            {"type": "thinking", "thinking": "Let me think about this..."},
+            {"type": "text", "text": "hello"},
+        ]
+        assert extract_thinking_content(content) == "Let me think about this..."
+
+    def test_multiple_thinking_blocks(self):
+        content = [
+            {"type": "thinking", "thinking": "First thought"},
+            {"type": "text", "text": "response"},
+            {"type": "thinking", "thinking": "Second thought"},
+        ]
+        assert extract_thinking_content(content) == "First thought\nSecond thought"
+
+    def test_no_thinking_returns_none(self):
+        content = [{"type": "text", "text": "hello"}]
+        assert extract_thinking_content(content) is None
+
+    def test_string_content_returns_none(self):
+        assert extract_thinking_content("hello") is None
+
+    def test_empty_content_returns_none(self):
+        assert extract_thinking_content([]) is None
 
 
 class TestExtractToolCalls:
@@ -149,6 +177,94 @@ class TestParseSession:
             assert len(session.messages) == 2
             assert session.total_input_tokens == 10
             assert session.total_output_tokens == 5
+
+    def test_parses_thinking_blocks(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "user",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "message": {"role": "user", "content": "hello"},
+            }) + "\n")
+            f.write(json.dumps({
+                "type": "assistant",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-01T10:00:01Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "Let me think..."},
+                        {"type": "text", "text": "Here is my response"},
+                    ],
+                },
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.messages[1].thinking == "Let me think..."
+            assert session.messages[1].content == "Here is my response"
+
+    def test_parses_slug(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "user",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "slug": "dapper-questing-pascal",
+                "message": {"role": "user", "content": "hello"},
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.slug == "dapper-questing-pascal"
+
+    def test_parses_summary(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "user",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "message": {"role": "user", "content": "hello"},
+            }) + "\n")
+            f.write(json.dumps({
+                "type": "summary",
+                "summary": "User asked a question and got a response",
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.summary == "User asked a question and got a response"
+
+    def test_parses_stop_reason(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "message": {
+                    "role": "assistant",
+                    "content": "response",
+                    "stop_reason": "end_turn",
+                },
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.messages[0].stop_reason == "end_turn"
+
+    def test_parses_is_sidechain(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "isSidechain": True,
+                "message": {"role": "assistant", "content": "response"},
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.messages[0].is_sidechain is True
 
 
 class TestGetProjectNameFromDir:

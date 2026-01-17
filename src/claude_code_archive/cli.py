@@ -198,6 +198,9 @@ def render(ctx, archive_dir: Optional[Path], output_dir: Optional[Path], session
                     model=msg["model"],
                     input_tokens=msg["input_tokens"],
                     output_tokens=msg["output_tokens"],
+                    thinking=msg.get("thinking"),
+                    stop_reason=msg.get("stop_reason"),
+                    is_sidechain=bool(msg.get("is_sidechain", False)),
                     tool_calls=[],
                 ))
 
@@ -234,6 +237,8 @@ def render(ctx, archive_dir: Optional[Path], output_dir: Optional[Path], session
                 project=session_dict["project"],
                 cwd=session_dict["cwd"],
                 git_branch=session_dict["git_branch"],
+                slug=session_dict.get("slug"),
+                summary=session_dict.get("summary"),
                 started_at=session_dict["started_at"],
                 ended_at=session_dict["ended_at"],
                 claude_version=session_dict["claude_version"],

@@ -44,6 +44,8 @@ def sample_session():
         id="test-session-123",
         project="test-project",
         cwd="/test/path",
+        slug="dapper-questing-pascal",
+        summary="A test session summary",
         started_at="2026-01-01T10:00:00Z",
         ended_at="2026-01-01T11:00:00Z",
         model="claude-opus-4-5-20251101",
@@ -65,6 +67,7 @@ def sample_session():
                 type="assistant",
                 timestamp="2026-01-01T10:00:01Z",
                 content="Let me check.",
+                thinking="I should list the files in this directory.",
                 tool_calls=[
                     ToolCall(
                         id="tool-1",
@@ -109,6 +112,19 @@ class TestRenderSessionToml:
         assert 'model = "claude-opus-4-5-20251101"' in toml
         assert 'input_tokens = 100' in toml
         assert 'output_tokens = 50' in toml
+
+    def test_renders_slug(self, sample_session):
+        toml = render_session_toml(sample_session)
+        assert 'slug = "dapper-questing-pascal"' in toml
+
+    def test_renders_summary(self, sample_session):
+        toml = render_session_toml(sample_session)
+        assert "A test session summary" in toml
+
+    def test_renders_thinking(self, sample_session):
+        toml = render_session_toml(sample_session)
+        assert "thinking = '''" in toml
+        assert "I should list the files in this directory." in toml
 
     def test_renders_turns(self, sample_session):
         toml = render_session_toml(sample_session)

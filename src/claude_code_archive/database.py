@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     project TEXT,
     cwd TEXT,
     git_branch TEXT,
+    slug TEXT,
+    summary TEXT,
     started_at TEXT,
     ended_at TEXT,
     claude_version TEXT,
@@ -28,9 +30,12 @@ CREATE TABLE IF NOT EXISTS messages (
     type TEXT,
     timestamp TEXT,
     content TEXT,
+    thinking TEXT,
     model TEXT,
+    stop_reason TEXT,
     input_tokens INTEGER,
-    output_tokens INTEGER
+    output_tokens INTEGER,
+    is_sidechain BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -104,15 +109,17 @@ class Database:
         conn.execute(
             """
             INSERT OR REPLACE INTO sessions
-            (id, project, cwd, git_branch, started_at, ended_at, claude_version,
+            (id, project, cwd, git_branch, slug, summary, started_at, ended_at, claude_version,
              total_input_tokens, total_output_tokens, total_cache_read_tokens, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session.id,
                 session.project,
                 session.cwd,
                 session.git_branch,
+                session.slug,
+                session.summary,
                 session.started_at,
                 session.ended_at,
                 session.claude_version,
@@ -128,8 +135,9 @@ class Database:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO messages
-                (id, session_id, parent_uuid, type, timestamp, content, model, input_tokens, output_tokens)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, session_id, parent_uuid, type, timestamp, content, thinking, model,
+                 stop_reason, input_tokens, output_tokens, is_sidechain)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message.id,
@@ -138,9 +146,12 @@ class Database:
                     message.type,
                     message.timestamp,
                     message.content,
+                    message.thinking,
                     message.model,
+                    message.stop_reason,
                     message.input_tokens,
                     message.output_tokens,
+                    message.is_sidechain,
                 ),
             )
 

@@ -40,6 +40,19 @@ def extract_text_content(content) -> str:
     return str(content)
 
 
+def extract_thinking_content(content) -> str | None:
+    """Extract thinking content from message content (array of blocks)."""
+    if not isinstance(content, list):
+        return None
+    thinking_parts = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "thinking":
+            thinking_text = block.get("thinking", "")
+            if thinking_text:
+                thinking_parts.append(thinking_text)
+    return "\n".join(thinking_parts) if thinking_parts else None
+
+
 def extract_tool_calls(content, message_id: str, session_id: str, timestamp: str) -> list[ToolCall]:
     """Extract tool calls from message content."""
     tool_calls = []
@@ -111,6 +124,13 @@ def parse_session(file_path: Path, project_name: str) -> Session:
             session.git_branch = entry.get("gitBranch")
         if not session.claude_version and entry.get("version"):
             session.claude_version = entry.get("version")
+        if not session.slug and entry.get("slug"):
+            session.slug = entry.get("slug")
+
+        # Extract summary from summary-type entries
+        if entry_type == "summary" and entry.get("summary"):
+            session.summary = entry.get("summary")
+            continue  # Summary entries don't have message data
 
         timestamp = entry.get("timestamp", "")
         message_data = entry.get("message", {})
@@ -176,6 +196,9 @@ def parse_session(file_path: Path, project_name: str) -> Session:
             model=model,
             input_tokens=input_tokens if input_tokens else None,
             output_tokens=output_tokens if output_tokens else None,
+            thinking=extract_thinking_content(content) if msg_type == "assistant" else None,
+            stop_reason=message_data.get("stop_reason"),
+            is_sidechain=entry.get("isSidechain", False),
             tool_calls=extract_tool_calls(content, msg_uuid, session_id, timestamp) if msg_type == "assistant" else [],
         )
         messages.append(message)

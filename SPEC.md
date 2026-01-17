@@ -210,12 +210,12 @@ src/claude_code_archive/
 
 ## Planned Enhancements
 
-### Phase 1: Missing Fields
-- [ ] Capture `thinking` blocks (currently filtered)
-- [ ] Capture `slug` (human-readable session name)
-- [ ] Capture `summary` from summary-type entries
-- [ ] Capture `stop_reason` from message
-- [ ] Capture `is_sidechain` flag
+### Phase 1: Missing Fields ✅
+- [x] Capture `thinking` blocks (currently filtered)
+- [x] Capture `slug` (human-readable session name)
+- [x] Capture `summary` from summary-type entries
+- [x] Capture `stop_reason` from message
+- [x] Capture `is_sidechain` flag
 
 ### Phase 2: Agent Relationships
 - [ ] Capture `agentId` to link subagent sessions to parent

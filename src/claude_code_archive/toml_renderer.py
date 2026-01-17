@@ -73,11 +73,17 @@ def render_session_toml(session: Session) -> str:
     # Session metadata
     lines.append("[session]")
     lines.append(f'id = "{session.id}"')
+    if session.slug:
+        lines.append(f'slug = "{escape_toml_string(session.slug)}"')
     lines.append(f'project = "{session.project}"')
     if session.cwd:
         lines.append(f'cwd = "{escape_toml_string(session.cwd)}"')
     if session.git_branch:
         lines.append(f'git_branch = "{escape_toml_string(session.git_branch)}"')
+    if session.summary:
+        lines.append("summary = '''")
+        lines.append(session.summary)
+        lines.append("'''")
     if session.started_at:
         lines.append(f'started_at = "{format_timestamp(session.started_at)}"')
     if session.ended_at:
@@ -99,11 +105,12 @@ def render_session_toml(session: Session) -> str:
     current_user_content: Optional[str] = None
     current_user_timestamp: Optional[str] = None
     pending_assistant_content: list[str] = []
+    pending_assistant_thinking: list[str] = []
     pending_tool_calls: list[tuple[ToolCall, Optional[str]]] = []
 
     def flush_turn():
         nonlocal turn_number, current_user_content, current_user_timestamp
-        nonlocal pending_assistant_content, pending_tool_calls
+        nonlocal pending_assistant_content, pending_assistant_thinking, pending_tool_calls
 
         if current_user_content is None and not pending_assistant_content and not pending_tool_calls:
             return
@@ -122,12 +129,17 @@ def render_session_toml(session: Session) -> str:
             lines.append("'''")
             lines.append("")
 
-        if pending_assistant_content:
+        if pending_assistant_content or pending_assistant_thinking:
             lines.append("[turns.assistant]")
             combined_content = "\n".join(pending_assistant_content)
             if combined_content.strip():
                 lines.append("content = '''")
                 lines.append(combined_content)
+                lines.append("'''")
+            combined_thinking = "\n".join(pending_assistant_thinking)
+            if combined_thinking.strip():
+                lines.append("thinking = '''")
+                lines.append(combined_thinking)
                 lines.append("'''")
             lines.append("")
 
@@ -139,6 +151,7 @@ def render_session_toml(session: Session) -> str:
         current_user_content = None
         current_user_timestamp = None
         pending_assistant_content = []
+        pending_assistant_thinking = []
         pending_tool_calls = []
 
     for message in session.messages:
@@ -151,6 +164,8 @@ def render_session_toml(session: Session) -> str:
         elif message.type == "assistant":
             if message.content.strip():
                 pending_assistant_content.append(message.content)
+            if message.thinking and message.thinking.strip():
+                pending_assistant_thinking.append(message.thinking)
 
             for tool_call in message.tool_calls:
                 result_content = None

@@ -41,6 +41,9 @@ class Message:
     model: Optional[str] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
+    thinking: Optional[str] = None
+    stop_reason: Optional[str] = None
+    is_sidechain: bool = False
     tool_calls: list[ToolCall] = field(default_factory=list)
 
 
@@ -52,6 +55,8 @@ class Session:
     project: str
     cwd: Optional[str] = None
     git_branch: Optional[str] = None
+    slug: Optional[str] = None
+    summary: Optional[str] = None
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
     claude_version: Optional[str] = None

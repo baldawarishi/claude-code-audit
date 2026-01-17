@@ -8,11 +8,11 @@ Date: 2026-01-17
 | Investigation | Feasibility | Recommendation | Complexity |
 |---------------|-------------|----------------|------------|
 | File-based pattern input | **Feasible** | Implement | Medium |
-| Smarter pattern prioritization | **Feasible** | Implement | Low-Medium |
+| Prompt-based chunking (TodoWrite/Task) | **Feasible** | Implement | Low |
 
-Both improvements are feasible and complementary. Recommend implementing in order:
-1. Pattern prioritization (quick win, improves quality)
-2. File-based input (enables scale, more complex)
+Both improvements are feasible and complementary. Recommend implementing together:
+1. File-based input (enables scale)
+2. Prompt updates (let Claude manage chunking via TodoWrite/Task)
 
 ---
 
@@ -171,227 +171,246 @@ Not yet prototyped. Ready for implementation with above design.
 
 ---
 
-## Investigation 2: Smarter Pattern Prioritization
+## Investigation 2: Prompt-based Chunking with TodoWrite/Task
 
 ### Problem Statement
 
-Current sorting (`classifier.py:94`):
+Current approach pre-filters patterns in Python (`classifier.py:94`):
 ```python
 all_patterns.sort(key=lambda x: x.get("occurrences", 0), reverse=True)
+all_patterns = all_patterns[:max_patterns]  # Hard limit of 50
 ```
 
-This misses valuable patterns:
-- Pattern in 5/36 projects with 20 occurrences (high spread, actionable)
-- Ranked lower than pattern in 1 project with 500 occurrences (noise)
+This misses valuable patterns and doesn't leverage Claude's ability to:
+- Intelligently prioritize patterns itself
+- Use TodoWrite to track progress through large sets
+- Use Task/subagents to chunk analysis
 
-### Current Data Available
+### SDK Capabilities Discovered
 
-Each pattern has (from `RawPattern.to_dict()`):
-- `occurrences`: Total count
-- `session_count`: Unique sessions
-- `project_count`: Unique projects
-- `pattern_type`: tool_sequence, prompt_prefix, prompt_phrase, file_access
+The SDK supports tools for self-managed chunking:
 
-### Proposed Scoring Heuristic
+1. **`TodoWrite`** - Track progress through analysis
+   ```python
+   allowed_tools=["TodoWrite"]
+   ```
 
-#### Formula
+2. **`Task`** - Spawn subagents for parallel/chunked work
+   ```python
+   allowed_tools=["Task"]
+   ```
 
+3. **`agents`** - Define custom subagent types
+   ```python
+   options = ClaudeAgentOptions(
+       agents={
+           "pattern-analyzer": AgentDefinition(
+               description="Analyze a batch of patterns",
+               prompt="Classify these patterns and return JSON...",
+               tools=["Read"],
+               model="haiku"  # Cheaper for batch work
+           )
+       }
+   )
+   ```
+
+### Proposed Solution: Prompt Updates
+
+Instead of complex Python scoring, **update the classification prompt** to guide Claude to:
+
+1. **Not be limited to top N** - Look at all patterns intelligently
+2. **Use TodoWrite** - Track analysis progress, manage context
+3. **Prioritize intelligently** - Cross-project spread > raw occurrence count
+
+#### Updated Prompt Template (key additions)
+
+Add to `prompts/classification.md`:
+
+```markdown
+## Tools Available
+
+- **TodoWrite**: Use this to track your progress through the analysis
+- **Read**: Use this to read the patterns file if provided
+
+## Analysis Strategy
+
+You have {pattern_count} patterns to analyze.
+
+### For Small Sets (< 50 patterns)
+Analyze all patterns directly and return classifications.
+
+### For Medium Sets (50-200 patterns)
+1. Use TodoWrite to create a task list grouping patterns by type
+2. Analyze each group, marking todos as you progress
+3. Prioritize patterns that appear across multiple projects
+4. Don't just look at occurrence count - a pattern in 5/36 projects
+   with 20 occurrences may be MORE valuable than one in 1 project
+   with 500 occurrences
+
+### For Large Sets (200+ patterns)
+1. Use TodoWrite to plan your analysis chunks
+2. First pass: Quick scan to identify high-value patterns
+   - Cross-project spread (appears in many projects)
+   - Tool sequences (most actionable)
+   - File access patterns (clear documentation candidates)
+3. Second pass: Detailed classification of top candidates
+4. Skip low-value patterns (single-project prompt phrases, etc.)
+
+## Prioritization Guidelines
+
+When deciding which patterns to classify in detail:
+
+| Signal | Priority | Reasoning |
+|--------|----------|-----------|
+| Appears in 30%+ projects | HIGH | Global skill/doc candidate |
+| Tool sequence pattern | HIGH | Most actionable |
+| Appears in 3+ projects | MEDIUM | Cross-project value |
+| File access pattern | MEDIUM | Clear doc candidate |
+| Single-project pattern | LOW | Limited scope |
+| Vague prompt phrase | LOW | Hard to action |
+
+**Key insight**: A pattern in 5 projects with 20 occurrences > pattern in 1 project with 500 occurrences.
+
+## Context Window Management
+
+If analyzing many patterns:
+- Don't try to hold all patterns in context at once
+- Use TodoWrite to track which batches you've analyzed
+- Summarize findings incrementally
+- Focus on quality over quantity
+```
+
+### Code Changes Required
+
+**`claude_client.py`** - Enable agentic tools:
 ```python
-import math
+options = ClaudeAgentOptions(
+    allowed_tools=["Read", "TodoWrite"],  # Enable chunking tools
+    cwd=temp_dir,
+    permission_mode='acceptEdits'
+)
+```
 
-def compute_pattern_score(
-    pattern: dict,
-    total_projects: int,
-    weights: dict | None = None
-) -> float:
-    """Compute a score balancing frequency, spread, and actionability."""
+**`classifier.py`** - Pass pattern count, don't hard-limit:
+```python
+def build_classification_prompt(
+    patterns: dict,
+    num_projects: int,
+    date_range: str,
+    max_patterns: int | None = None,  # None = let Claude decide
+) -> str:
+    all_patterns = flatten_patterns(patterns)
+    pattern_count = len(all_patterns)
 
-    w = weights or {
-        "occurrence": 1.0,
-        "spread": 2.0,      # Weight cross-project patterns
-        "session": 0.5,
-        "type": 1.5,        # Boost actionable types
-    }
+    # For large sets, use file-based input (Investigation 1)
+    if pattern_count > 100:
+        patterns_input = "Read the patterns from `patterns.json`"
+    else:
+        patterns_input = f"```json\n{json.dumps(all_patterns)}\n```"
 
-    # Actionability by pattern type
-    type_multiplier = {
-        "tool_sequence": 1.5,   # Highly actionable, clear workflow
-        "file_access": 1.2,     # Clear documentation candidate
-        "prompt_prefix": 1.0,   # Moderate actionability
-        "prompt_phrase": 0.7,   # Often too vague
-    }
-
-    occurrences = pattern.get("occurrences", 1)
-    session_count = pattern.get("session_count", 1)
-    project_count = pattern.get("project_count", 1)
-    pattern_type = pattern.get("pattern_type", "unknown")
-
-    # Logarithmic scaling for frequency (diminishing returns)
-    frequency_score = math.log(occurrences + 1)
-
-    # Linear spread score (normalized by total projects)
-    spread_score = project_count / max(total_projects, 1)
-    # Bonus for appearing in multiple projects
-    spread_bonus = 1.0 + (0.5 if project_count >= 3 else 0)
-
-    # Session diversity
-    session_score = math.log(session_count + 1)
-
-    # Type multiplier
-    type_score = type_multiplier.get(pattern_type, 1.0)
-
-    return (
-        w["occurrence"] * frequency_score +
-        w["spread"] * spread_score * spread_bonus +
-        w["session"] * session_score +
-        w["type"] * type_score
+    return template.format(
+        pattern_count=pattern_count,
+        patterns_input=patterns_input,
+        ...
     )
 ```
 
-#### Example Scores
+### Optional: Custom Subagent for Batch Analysis
 
-| Pattern | Occurrences | Projects | Sessions | Type | Old Rank | New Score | New Rank |
-|---------|-------------|----------|----------|------|----------|-----------|----------|
-| git workflow | 47 | 8/10 | 12 | tool_sequence | 1 | 8.2 | 1 |
-| internal loop | 500 | 1/10 | 3 | prompt_phrase | 2 | 4.1 | 5 |
-| config read | 20 | 5/10 | 15 | file_access | 4 | 6.8 | 2 |
-| test pattern | 23 | 4/10 | 8 | prompt_prefix | 3 | 5.9 | 3 |
-
-### Chunked Analysis Approach
-
-For large pattern sets (especially with file-based input), analyze in chunks:
-
-#### Three-Pass Strategy
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Pass 1: Categorize                                              │
-│  ─────────────────                                               │
-│  Group patterns by type:                                         │
-│  - tool_sequences: [...]                                         │
-│  - file_access: [...]                                           │
-│  - prompt_prefixes: [...]                                       │
-│  - prompt_phrases: [...]                                        │
-├─────────────────────────────────────────────────────────────────┤
-│  Pass 2: Score & Rank (per category)                            │
-│  ───────────────────────────────────                            │
-│  For each category:                                             │
-│  1. Apply scoring heuristic                                     │
-│  2. Sort by score descending                                    │
-│  3. Keep top N patterns                                         │
-├─────────────────────────────────────────────────────────────────┤
-│  Pass 3: Aggregate                                              │
-│  ────────────────                                                │
-│  Combine top patterns from each category:                       │
-│  - Ensure diversity (not all one type)                          │
-│  - Balance by expected recommendation type                      │
-│  - Final limit for LLM classification                           │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### Implementation
+For very large pattern sets, define a specialized subagent:
 
 ```python
-def prioritize_patterns(
-    patterns: dict[str, list[dict]],
-    total_projects: int,
-    max_per_type: int = 25,
-    max_total: int = 100,
-) -> list[dict]:
-    """Prioritize patterns using scoring heuristic with category balance."""
-
-    scored_by_type: dict[str, list[tuple[float, dict]]] = {}
-
-    # Pass 1 & 2: Score and rank per type
-    for pattern_type, pattern_list in patterns.items():
-        scored = [
-            (compute_pattern_score(p, total_projects), p)
-            for p in pattern_list
-        ]
-        scored.sort(reverse=True, key=lambda x: x[0])
-        scored_by_type[pattern_type] = scored[:max_per_type]
-
-    # Pass 3: Aggregate with balance
-    # Priority order for recommendation types
-    type_priority = ["tool_sequences", "file_access", "prompt_prefixes", "prompt_phrases"]
-
-    result = []
-    for ptype in type_priority:
-        if ptype in scored_by_type:
-            for score, pattern in scored_by_type[ptype]:
-                if len(result) >= max_total:
-                    break
-                pattern["_score"] = score  # Include for debugging
-                result.append(pattern)
-
-    return result
+options = ClaudeAgentOptions(
+    allowed_tools=["Read", "TodoWrite", "Task"],
+    agents={
+        "batch-classifier": AgentDefinition(
+            description="Classify a batch of patterns quickly",
+            prompt="""You are a pattern classifier. Given a batch of patterns,
+            return JSON classifications. Focus on actionability and cross-project spread.
+            Be concise - this is a subtask of a larger analysis.""",
+            tools=["Read"],
+            model="haiku"  # Faster and cheaper for batch work
+        )
+    }
+)
 ```
+
+### Benefits of Prompt-based Approach
+
+| Aspect | Python Scoring | Prompt-based |
+|--------|---------------|--------------|
+| Complexity | High (tunable weights) | Low (natural language) |
+| Flexibility | Rigid formula | Claude adapts |
+| Context management | Manual chunking | Claude manages via TodoWrite |
+| Maintenance | Code changes | Prompt edits |
+| Debuggability | Score values | Claude explains reasoning |
 
 ### Integration Points
 
-1. **`classifier.py:87-95`**: Replace simple sort with `prioritize_patterns()`
-2. **CLI flag**: Add `--scoring-weights` for tuning (optional)
-3. **Output**: Include score in debug output for tuning
+1. **`prompts/classification.md`**: Add chunking strategy section
+2. **`claude_client.py`**: Enable TodoWrite in allowed_tools
+3. **`classifier.py`**: Remove hard max_patterns limit, pass pattern_count
 
 ---
 
 ## Implementation Recommendations
 
-### Phase 1: Pattern Prioritization (Quick Win)
+### Phase 1: Enable SDK Tools
 
-**Effort**: 2-4 hours
-**Impact**: Immediate quality improvement
-
-1. Add `prioritize_patterns()` function to `classifier.py`
-2. Replace current sorting logic
-3. Add tests with sample patterns
-4. Tune weights based on real data
-
-### Phase 2: File-based Input (Scale Enabler)
-
-**Effort**: 4-8 hours
-**Impact**: 20x capacity increase
+**Effort**: 1-2 hours
+**Impact**: Enables all subsequent improvements
 
 1. Update `claude_client.py` to accept `ClaudeAgentOptions`
-2. Add temp file writing logic to `classifier.py`
-3. Create file-based prompt variant
-4. Add fallback for tool execution failures
-5. Test with large pattern sets
+2. Enable `allowed_tools=["Read", "TodoWrite"]`
+3. Set appropriate `cwd` and `permission_mode`
 
-### Phase 3: Combined Approach (Full Solution)
+### Phase 2: Update Classification Prompt
 
-With both improvements:
-- Score and prioritize 1000+ patterns
-- Select top 100-200 diverse patterns
-- Write to temp file
-- Claude reads and classifies
+**Effort**: 2-3 hours
+**Impact**: Intelligent chunking without Python complexity
+
+1. Add analysis strategy section to `prompts/classification.md`
+2. Add prioritization guidelines (cross-project spread > raw count)
+3. Add TodoWrite usage instructions for large sets
+4. Remove hard `max_patterns` limit in `classifier.py`
+
+### Phase 3: File-based Input (Scale)
+
+**Effort**: 2-3 hours
+**Impact**: 20x capacity increase
+
+1. Add temp file writing logic to `classifier.py`
+2. Update prompt to instruct Claude to read patterns file
+3. Add fallback for tool execution failures
+
+### Combined Result
+
+With all improvements:
+- Write 1000+ patterns to temp file
+- Claude reads file via Read tool
+- Uses TodoWrite to track progress through batches
+- Intelligently prioritizes cross-project patterns
 - Results cover all important patterns across the archive
 
 ---
 
 ## Testing Strategy
 
-### Pattern Prioritization Tests
+### SDK Tools Tests
 
 ```python
-def test_scoring_prefers_spread():
-    """Pattern in many projects should score higher than single-project pattern."""
-    high_spread = {"occurrences": 20, "project_count": 5, "session_count": 10, "pattern_type": "tool_sequence"}
-    single_project = {"occurrences": 100, "project_count": 1, "session_count": 5, "pattern_type": "tool_sequence"}
+@pytest.mark.asyncio
+async def test_tools_enabled():
+    """Verify Read and TodoWrite tools are enabled."""
+    patterns = generate_test_patterns(count=100)
 
-    assert compute_pattern_score(high_spread, 10) > compute_pattern_score(single_project, 10)
+    with patch_claude_client() as mock:
+        result = await classify_patterns(patterns)
 
-def test_type_multiplier():
-    """Tool sequences should score higher than prompt phrases with same stats."""
-    tool_seq = {"occurrences": 10, "project_count": 2, "session_count": 5, "pattern_type": "tool_sequence"}
-    phrase = {"occurrences": 10, "project_count": 2, "session_count": 5, "pattern_type": "prompt_phrase"}
+        # Verify tools were enabled
+        assert "Read" in mock.options.allowed_tools
+        assert "TodoWrite" in mock.options.allowed_tools
 
-    assert compute_pattern_score(tool_seq, 10) > compute_pattern_score(phrase, 10)
-```
-
-### File-based Input Tests
-
-```python
 @pytest.mark.asyncio
 async def test_file_based_classification():
     """Large pattern sets should use file-based approach."""
@@ -415,6 +434,24 @@ async def test_fallback_on_tool_failure():
 
         # Should still produce results via fallback
         assert len(result) > 0
+```
+
+### Prompt Content Tests
+
+```python
+def test_prompt_includes_pattern_count():
+    """Prompt should include total pattern count for Claude."""
+    patterns = generate_test_patterns(count=150)
+    prompt = build_classification_prompt(patterns, num_projects=10)
+
+    assert "150 patterns" in prompt or "pattern_count" in prompt
+
+def test_prompt_includes_prioritization_guidelines():
+    """Prompt should guide Claude on prioritization."""
+    template = load_prompt_template()
+
+    assert "cross-project" in template.lower()
+    assert "TodoWrite" in template
 ```
 
 ---

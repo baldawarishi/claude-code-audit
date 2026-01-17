@@ -14,6 +14,7 @@ from claude_code_archive.parser import (
     parse_jsonl_file,
     parse_session,
     get_project_name_from_dir,
+    is_tmp_directory,
 )
 
 
@@ -323,3 +324,31 @@ class TestGetProjectNameFromDir:
         # Should skip: repos, src, dev, work, documents, github, git
         assert get_project_name_from_dir("-Users-john-github-my-repo") == "my-repo"
         assert get_project_name_from_dir("-Users-john-src-backend") == "backend"
+
+
+class TestIsTmpDirectory:
+    def test_detects_tmp_prefix(self):
+        assert is_tmp_directory("-tmp-pytest-123") is True
+
+    def test_detects_var_folders(self):
+        assert is_tmp_directory("-var-folders-9g-abc123") is True
+
+    def test_detects_private_var_folders(self):
+        # macOS full path
+        assert is_tmp_directory("-private-var-folders-9g-1c2c-pytest-test") is True
+
+    def test_detects_private_tmp(self):
+        assert is_tmp_directory("-private-tmp-test-session") is True
+
+    def test_detects_pytest_anywhere(self):
+        assert is_tmp_directory("-Users-john-pytest-cache-test") is True
+        assert is_tmp_directory("-home-user-code-pytest-4-tmpdir") is True
+
+    def test_allows_normal_projects(self):
+        assert is_tmp_directory("-Users-john-Development-myproject") is False
+        assert is_tmp_directory("-home-user-projects-app") is False
+        assert is_tmp_directory("myproject") is False
+
+    def test_case_insensitive(self):
+        assert is_tmp_directory("-TMP-test") is True
+        assert is_tmp_directory("-Private-Var-Folders-abc") is True

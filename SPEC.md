@@ -138,6 +138,14 @@ Directory names like `-Users-john-Development-myproject` are converted to readab
 2. Skip intermediate directories: `projects`, `code`, `repos`, `src`, `dev`, `work`, `documents`, `development`, `github`, `git`
 3. Join remaining meaningful parts with dashes
 
+### Temp Directory Filtering
+Sessions from these directories are excluded by default (use `--include-tmp-directories` to include):
+- `-tmp-*` - Unix temp directories
+- `-var-folders-*` - macOS temp cache
+- `-private-var-folders-*` - macOS full path
+- `-private-tmp-*` - macOS private tmp
+- Any path containing `pytest-` - test artifacts
+
 ### Message Filtering
 Skip entries during parsing:
 - `isMeta: true` - system metadata messages
@@ -148,12 +156,13 @@ Skip entries during parsing:
 
 ### `sync` - Archive sessions to SQLite
 ```
-claude-code-archive sync [--projects-dir PATH] [--archive-dir PATH] [--project TEXT] [--force]
+claude-code-archive sync [--projects-dir PATH] [--archive-dir PATH] [--project TEXT] [--force] [--include-tmp-directories]
 ```
 - Incremental by default (skips existing sessions)
 - Extracts project name from directory path (see Parsing Rules)
 - Aggregates token usage per session
 - Runs database migrations automatically
+- Excludes temp directories by default (pytest, /tmp, /var/folders)
 
 ### `render` - Generate TOML transcripts
 ```

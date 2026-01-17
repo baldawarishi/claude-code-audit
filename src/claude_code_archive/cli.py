@@ -7,7 +7,7 @@ import click
 
 from .config import Config
 from .database import Database
-from .parser import discover_sessions, get_project_name_from_dir, parse_session
+from .parser import discover_sessions, get_project_name_from_dir, parse_session, is_tmp_directory
 from .toml_renderer import render_session_to_file as render_toml_file
 from .toml_renderer import render_session_toml
 
@@ -51,8 +51,13 @@ def main(ctx, config: Optional[Path]):
     is_flag=True,
     help="Re-archive sessions even if they already exist",
 )
+@click.option(
+    "--include-tmp-directories",
+    is_flag=True,
+    help="Include sessions from temp directories (excluded by default)",
+)
 @click.pass_context
-def sync(ctx, projects_dir: Optional[Path], archive_dir: Optional[Path], project: str, force: bool):
+def sync(ctx, projects_dir: Optional[Path], archive_dir: Optional[Path], project: str, force: bool, include_tmp_directories: bool):
     """Sync sessions from Claude projects to the archive (SQLite only)."""
     cfg: Config = ctx.obj["config"]
 
@@ -71,13 +76,19 @@ def sync(ctx, projects_dir: Optional[Path], archive_dir: Optional[Path], project
         skipped = 0
         errors = 0
 
+        tmp_skipped = 0
         for jsonl_file, proj_name in discover_sessions(cfg.projects_dir):
+            # Get better project name from directory
+            proj_name = get_project_name_from_dir(jsonl_file.parent.name)
+
+            # Skip temp directories unless explicitly included
+            if not include_tmp_directories and is_tmp_directory(jsonl_file.parent.name):
+                tmp_skipped += 1
+                continue
+
             # Filter by project if specified
             if project and proj_name != project:
                 continue
-
-            # Get better project name from directory
-            proj_name = get_project_name_from_dir(jsonl_file.parent.name)
 
             session_id = jsonl_file.stem
             if session_id.startswith("agent-"):
@@ -107,6 +118,8 @@ def sync(ctx, projects_dir: Optional[Path], archive_dir: Optional[Path], project
                 errors += 1
 
         click.echo(f"\nDone: {synced} synced, {skipped} skipped, {errors} errors")
+        if tmp_skipped > 0:
+            click.echo(f"  (Also skipped {tmp_skipped} sessions from temp directories)")
 
         # Show stats
         stats = db.get_stats()

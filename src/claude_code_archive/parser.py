@@ -254,6 +254,37 @@ def discover_sessions(projects_dir: Path) -> Iterator[tuple[Path, str]]:
             yield jsonl_file, project_name
 
 
+def is_tmp_directory(dir_name: str) -> bool:
+    """Check if a directory name represents a temp/pytest directory.
+
+    Returns True for paths like:
+    - -tmp-...
+    - -var-folders-...
+    - -private-var-folders-...
+    - -private-tmp-...
+    - Anything containing 'pytest-'
+    """
+    name_lower = dir_name.lower()
+
+    # Check for common temp directory patterns
+    tmp_prefixes = [
+        "-tmp-",
+        "-var-folders-",
+        "-private-var-folders-",
+        "-private-tmp-",
+    ]
+
+    for prefix in tmp_prefixes:
+        if name_lower.startswith(prefix):
+            return True
+
+    # Check for pytest temp directories anywhere in the path
+    if "pytest-" in name_lower:
+        return True
+
+    return False
+
+
 def get_project_name_from_dir(dir_name: str) -> str:
     """Extract a readable project name from a project directory name.
 

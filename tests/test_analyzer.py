@@ -1,7 +1,8 @@
-"""Tests for analyzer pattern detection."""
+"""Tests for analyzer pattern detection and classification."""
 
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -17,6 +18,19 @@ from claude_code_archive.analyzer.patterns import (
     normalize_file_path,
     normalize_prompt,
     normalize_tool_name,
+)
+from claude_code_archive.analyzer.claude_client import AnalyzerClaudeClient
+from claude_code_archive.analyzer.classifier import (
+    ClassifiedPattern,
+    build_classification_prompt,
+    compute_confidence,
+    compute_scope,
+    load_prompt_template,
+    parse_classification_response,
+)
+from claude_code_archive.analyzer.renderer import (
+    render_recommendations_markdown,
+    render_summary_stdout,
 )
 from claude_code_archive.database import Database
 
@@ -463,3 +477,437 @@ class TestDetectPatterns:
                 assert "session_count" in pattern
                 assert "projects" in pattern
                 assert "project_count" in pattern
+
+
+# ============================================================================
+# Phase 3b Tests: Claude Client, Classifier, and Renderer
+# ============================================================================
+
+
+class TestAnalyzerClaudeClient:
+    """Tests for Claude SDK client wrapper."""
+
+    def test_extract_json_plain(self):
+        """Test extracting plain JSON."""
+        response = '{"key": "value"}'
+        result = AnalyzerClaudeClient.extract_json(response)
+        assert result == '{"key": "value"}'
+
+    def test_extract_json_code_block(self):
+        """Test extracting JSON from markdown code block."""
+        response = """Here is the result:
+
+```json
+{"key": "value"}
+```
+
+That's the output."""
+        result = AnalyzerClaudeClient.extract_json(response)
+        assert result == '{"key": "value"}'
+
+    def test_extract_json_generic_code_block(self):
+        """Test extracting JSON from generic code block."""
+        response = """```
+{"key": "value"}
+```"""
+        result = AnalyzerClaudeClient.extract_json(response)
+        assert result == '{"key": "value"}'
+
+    def test_parse_json_response_valid(self):
+        """Test parsing valid JSON response."""
+        response = '{"classifications": []}'
+        result = AnalyzerClaudeClient.parse_json_response(response)
+        assert result == {"classifications": []}
+
+    def test_parse_json_response_invalid(self):
+        """Test parsing invalid JSON raises ValueError."""
+        with pytest.raises(ValueError, match="Failed to parse JSON"):
+            AnalyzerClaudeClient.parse_json_response("not json at all")
+
+
+class TestClassifier:
+    """Tests for pattern classification logic."""
+
+    def test_load_prompt_template(self):
+        """Test that prompt template loads successfully."""
+        template = load_prompt_template()
+        assert "{patterns_json}" in template
+        assert "{num_projects}" in template
+        assert "{date_range}" in template
+
+    def test_build_classification_prompt(self):
+        """Test building classification prompt with data."""
+        patterns = {
+            "tool_sequences": [
+                {
+                    "pattern_type": "tool_sequence",
+                    "pattern_key": "A -> B -> C",
+                    "occurrences": 10,
+                }
+            ],
+            "prompt_prefixes": [],
+            "prompt_phrases": [],
+            "file_access": [],
+        }
+
+        prompt = build_classification_prompt(
+            patterns=patterns,
+            num_projects=5,
+            date_range="2025-01-01 to 2025-01-15",
+            global_threshold=0.3,
+        )
+
+        assert "5" in prompt  # num_projects
+        assert "2025-01-01 to 2025-01-15" in prompt
+        assert "30%" in prompt  # global threshold
+        assert "A -> B -> C" in prompt
+
+    def test_compute_scope_global(self):
+        """Test scope detection for global patterns."""
+        pattern = RawPattern(
+            pattern_type="tool_sequence",
+            pattern_key="test",
+            occurrences=10,
+            projects={"p1", "p2", "p3", "p4"},  # 4 of 10 = 40%
+        )
+
+        scope = compute_scope(pattern, total_projects=10, global_threshold=0.3)
+        assert scope == "global"
+
+    def test_compute_scope_project(self):
+        """Test scope detection for project-specific patterns."""
+        pattern = RawPattern(
+            pattern_type="tool_sequence",
+            pattern_key="test",
+            occurrences=10,
+            projects={"my-project"},  # Only 1 project
+        )
+
+        scope = compute_scope(pattern, total_projects=10, global_threshold=0.3)
+        assert scope == "project:my-project"
+
+    def test_compute_scope_edge_case(self):
+        """Test scope detection with 2 projects (below threshold)."""
+        pattern = RawPattern(
+            pattern_type="tool_sequence",
+            pattern_key="test",
+            occurrences=10,
+            projects={"p1", "p2"},  # 2 of 10 = 20%, below 30%
+        )
+
+        scope = compute_scope(pattern, total_projects=10, global_threshold=0.3)
+        # Should default to global since multiple projects involved
+        assert scope == "global"
+
+    def test_compute_confidence_high(self):
+        """Test high confidence detection."""
+        pattern = RawPattern(
+            pattern_type="tool_sequence",
+            pattern_key="test",
+            occurrences=15,
+            sessions={"s1", "s2", "s3", "s4", "s5", "s6"},
+            projects={"p1", "p2", "p3"},
+        )
+
+        confidence = compute_confidence(pattern)
+        assert confidence == "high"
+
+    def test_compute_confidence_medium(self):
+        """Test medium confidence detection."""
+        pattern = RawPattern(
+            pattern_type="tool_sequence",
+            pattern_key="test",
+            occurrences=6,
+            sessions={"s1", "s2", "s3"},
+            projects={"p1"},
+        )
+
+        confidence = compute_confidence(pattern)
+        assert confidence == "medium"
+
+    def test_compute_confidence_low(self):
+        """Test low confidence detection."""
+        pattern = RawPattern(
+            pattern_type="tool_sequence",
+            pattern_key="test",
+            occurrences=3,
+            sessions={"s1", "s2"},
+            projects={"p1"},
+        )
+
+        confidence = compute_confidence(pattern)
+        assert confidence == "low"
+
+    def test_parse_classification_response(self):
+        """Test parsing classification response from Claude."""
+        response_json = {
+            "classifications": [
+                {
+                    "pattern_key": "git-status -> git-diff",
+                    "category": "skill",
+                    "scope": "global",
+                    "confidence": "high",
+                    "reasoning": "Common git workflow",
+                    "suggested_name": "git-review",
+                    "suggested_content": "---\nname: git-review\n---",
+                }
+            ]
+        }
+
+        raw_patterns = {
+            "git-status -> git-diff": RawPattern(
+                pattern_type="tool_sequence",
+                pattern_key="git-status -> git-diff",
+                occurrences=10,
+                sessions={"s1", "s2"},
+                projects={"p1", "p2"},
+            )
+        }
+
+        result = parse_classification_response(response_json, raw_patterns)
+
+        assert len(result) == 1
+        classified = result[0]
+        assert classified.category == "skill"
+        assert classified.scope == "global"
+        assert classified.confidence == "high"
+        assert classified.suggested_name == "git-review"
+
+    def test_parse_classification_response_validates_category(self):
+        """Test that invalid categories are normalized."""
+        response_json = {
+            "classifications": [
+                {
+                    "pattern_key": "test",
+                    "category": "invalid_category",
+                    "scope": "global",
+                    "confidence": "high",
+                    "reasoning": "",
+                    "suggested_name": "",
+                    "suggested_content": "",
+                }
+            ]
+        }
+
+        result = parse_classification_response(response_json, {})
+
+        assert result[0].category == "claude_md"  # Default fallback
+
+    def test_parse_classification_response_validates_confidence(self):
+        """Test that invalid confidence is normalized."""
+        response_json = {
+            "classifications": [
+                {
+                    "pattern_key": "test",
+                    "category": "skill",
+                    "scope": "global",
+                    "confidence": "very_high",  # Invalid
+                    "reasoning": "",
+                    "suggested_name": "",
+                    "suggested_content": "",
+                }
+            ]
+        }
+
+        result = parse_classification_response(response_json, {})
+
+        assert result[0].confidence == "low"  # Default fallback
+
+
+class TestRenderer:
+    """Tests for markdown rendering."""
+
+    @pytest.fixture
+    def sample_classifications(self):
+        """Create sample classifications for testing."""
+        return [
+            ClassifiedPattern(
+                raw_pattern=RawPattern(
+                    pattern_type="tool_sequence",
+                    pattern_key="git-status -> git-diff",
+                    occurrences=47,
+                    sessions={"s1", "s2", "s3"},
+                    projects={"proj-a", "proj-b", "proj-c"},
+                    first_seen="2025-01-01T10:00:00Z",
+                    last_seen="2025-01-15T10:00:00Z",
+                ),
+                category="skill",
+                scope="global",
+                confidence="high",
+                reasoning="Universal git workflow pattern",
+                suggested_name="git-review",
+                suggested_content="---\nname: git-review\n---",
+            ),
+            ClassifiedPattern(
+                raw_pattern=RawPattern(
+                    pattern_type="file_access",
+                    pattern_key="~/project/config.py",
+                    occurrences=25,
+                    sessions={"s1", "s2"},
+                    projects={"my-api"},
+                    first_seen="2025-01-01T10:00:00Z",
+                    last_seen="2025-01-10T10:00:00Z",
+                ),
+                category="claude_md",
+                scope="project:my-api",
+                confidence="medium",
+                reasoning="Frequently accessed config file",
+                suggested_name="config-reference",
+                suggested_content="## Configuration\n\nKey settings...",
+            ),
+        ]
+
+    def test_render_recommendations_markdown_structure(self, sample_classifications):
+        """Test that markdown has correct structure."""
+        markdown = render_recommendations_markdown(
+            classifications=sample_classifications,
+            total_sessions=100,
+            total_projects=10,
+        )
+
+        assert "# Workflow Analysis Recommendations" in markdown
+        assert "## Global Recommendations" in markdown
+        assert "## Project: my-api" in markdown
+        assert "### Tool Sequence: git-status -> git-diff" in markdown
+        assert "### File Access: ~/project/config.py" in markdown
+
+    def test_render_recommendations_markdown_metadata(self, sample_classifications):
+        """Test that pattern metadata is included."""
+        markdown = render_recommendations_markdown(
+            classifications=sample_classifications,
+            total_sessions=100,
+            total_projects=10,
+        )
+
+        assert "**Category**: Skill" in markdown
+        assert "**Confidence**: high" in markdown
+        assert "47" in markdown  # occurrences
+        assert "**Time span**: 2025-01-01 to 2025-01-15" in markdown
+
+    def test_render_recommendations_markdown_details_block(self, sample_classifications):
+        """Test that suggested content is in details block."""
+        markdown = render_recommendations_markdown(
+            classifications=sample_classifications,
+            total_sessions=100,
+            total_projects=10,
+        )
+
+        assert "<details>" in markdown
+        assert "</details>" in markdown
+        assert "Suggested SKILL.md" in markdown
+
+    def test_render_summary_stdout(self, sample_classifications):
+        """Test stdout summary rendering."""
+        summary = render_summary_stdout(
+            classifications=sample_classifications,
+            total_sessions=100,
+            total_projects=10,
+        )
+
+        assert "Analyzed 100 sessions across 10 projects" in summary
+        assert "Skill: 1" in summary
+        assert "CLAUDE.md: 1" in summary
+        assert "high: 1" in summary
+        assert "medium: 1" in summary
+        assert "global: 1" in summary
+        assert "project-specific: 1" in summary
+
+    def test_render_empty_classifications(self):
+        """Test rendering with no classifications."""
+        markdown = render_recommendations_markdown(
+            classifications=[],
+            total_sessions=0,
+            total_projects=0,
+        )
+
+        assert "# Workflow Analysis Recommendations" in markdown
+        # Should still have header but no sections
+
+
+@pytest.mark.asyncio
+class TestPatternClassifierIntegration:
+    """Integration tests for pattern classifier with mocked Claude client."""
+
+    @pytest.fixture
+    def mock_claude_response(self):
+        """Sample Claude response for classification."""
+        return {
+            "classifications": [
+                {
+                    "pattern_key": "Bash:git-status -> Bash:git-diff -> Bash:git-add",
+                    "category": "skill",
+                    "scope": "global",
+                    "confidence": "high",
+                    "reasoning": "Common git workflow",
+                    "suggested_name": "commit-workflow",
+                    "suggested_content": "---\nname: commit-workflow\n---",
+                }
+            ]
+        }
+
+    @pytest.fixture
+    def sample_patterns_result(self):
+        """Sample patterns result from detect_patterns."""
+        return {
+            "generated_at": "2025-01-17T10:00:00Z",
+            "summary": {
+                "total_sessions_analyzed": 10,
+                "total_projects": 3,
+                "patterns_found": {
+                    "tool_sequences": 1,
+                    "prompt_prefixes": 0,
+                    "prompt_phrases": 0,
+                    "file_access": 0,
+                },
+            },
+            "patterns": {
+                "tool_sequences": [
+                    {
+                        "pattern_type": "tool_sequence",
+                        "pattern_key": "Bash:git-status -> Bash:git-diff -> Bash:git-add",
+                        "occurrences": 15,
+                        "sessions": ["s1", "s2", "s3"],
+                        "session_count": 3,
+                        "projects": ["p1", "p2"],
+                        "project_count": 2,
+                        "first_seen": "2025-01-01T10:00:00Z",
+                        "last_seen": "2025-01-15T10:00:00Z",
+                    }
+                ],
+                "prompt_prefixes": [],
+                "prompt_phrases": [],
+                "file_access": [],
+            },
+        }
+
+    async def test_classifier_with_mocked_client(
+        self, mock_claude_response, sample_patterns_result
+    ):
+        """Test classifier with mocked Claude SDK client."""
+        import json
+
+        from claude_code_archive.analyzer.classifier import PatternClassifier
+
+        # Create mock client
+        mock_client = MagicMock(spec=AnalyzerClaudeClient)
+        mock_client.query = AsyncMock(
+            return_value=json.dumps(mock_claude_response)
+        )
+        mock_client.parse_json_response = MagicMock(
+            return_value=mock_claude_response
+        )
+
+        classifier = PatternClassifier(client=mock_client, global_threshold=0.3)
+
+        # Run classification
+        results = await classifier.classify(sample_patterns_result)
+
+        # Verify results
+        assert len(results) == 1
+        assert results[0].category == "skill"
+        assert results[0].scope == "global"
+        assert results[0].confidence == "high"
+        assert results[0].suggested_name == "commit-workflow"
+
+        # Verify client was called
+        mock_client.query.assert_called_once()

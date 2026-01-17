@@ -395,10 +395,16 @@ def config(ctx, archive_dir: Optional[Path], projects_dir: Optional[Path], show:
     help="Minimum distinct sessions (default: 2)",
 )
 @click.option(
+    "--global-threshold",
+    type=float,
+    default=0.3,
+    help="Fraction of projects for global scope (default: 0.3 = 30%%)",
+)
+@click.option(
     "--output",
     type=click.Path(path_type=Path),
     default=None,
-    help="Output file path (default: {archive-dir}/analysis/patterns-{datetime}.json)",
+    help="Output file path (default: {archive-dir}/analysis/...)",
 )
 @click.pass_context
 def analyze(
@@ -409,10 +415,17 @@ def analyze(
     patterns_only: bool,
     min_occurrences: int,
     min_sessions: int,
+    global_threshold: float,
     output: Optional[Path],
 ):
     """Analyze archived sessions for workflow patterns."""
-    from .analyzer import detect_patterns
+    import asyncio
+    from .analyzer import (
+        detect_patterns,
+        classify_patterns,
+        render_summary_stdout,
+        write_recommendations,
+    )
 
     cfg: Config = ctx.obj["config"]
 
@@ -442,6 +455,9 @@ def analyze(
         for pattern_type, count in summary["patterns_found"].items():
             click.echo(f"  {pattern_type}: {count}")
 
+        # Check if there are any patterns to classify
+        total_patterns = sum(summary["patterns_found"].values())
+
         if patterns_only:
             # Determine output path
             if output:
@@ -457,9 +473,54 @@ def analyze(
                 json.dump(result, f, indent=2)
 
             click.echo(f"\nPatterns written to: {output_path}")
+        elif total_patterns == 0:
+            click.echo("\nNo patterns found to classify.")
         else:
-            click.echo("\nNote: Full analysis with LLM classification requires --patterns-only=false (coming soon)")
-            click.echo("For now, use --patterns-only to output raw patterns as JSON")
+            # Run LLM classification
+            click.echo("\nClassifying patterns with Claude...")
+
+            try:
+                classifications = asyncio.run(
+                    classify_patterns(
+                        patterns_result=result,
+                        global_threshold=global_threshold,
+                    )
+                )
+
+                # Print summary to stdout
+                click.echo("")
+                click.echo(render_summary_stdout(
+                    classifications=classifications,
+                    total_sessions=summary["total_sessions_analyzed"],
+                    total_projects=summary["total_projects"],
+                ))
+
+                # Determine output path
+                if output:
+                    output_path = output
+                else:
+                    analysis_dir = cfg.archive_dir / "analysis"
+                    analysis_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+                    output_path = analysis_dir / f"recommendations-{timestamp}.md"
+
+                # Write markdown output
+                write_recommendations(
+                    classifications=classifications,
+                    output_path=output_path,
+                    total_sessions=summary["total_sessions_analyzed"],
+                    total_projects=summary["total_projects"],
+                    archive_dir=cfg.archive_dir,
+                )
+
+                click.echo(f"\nRecommendations written to: {output_path}")
+
+            except ValueError as e:
+                if "ANTHROPIC_API_KEY" in str(e):
+                    click.echo(f"\nError: {e}")
+                    click.echo("Use --patterns-only to skip LLM classification.")
+                else:
+                    raise
 
 
 if __name__ == "__main__":

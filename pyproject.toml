@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.0",
+    "claude-agent-sdk>=0.1.12",
 ]
 
 [project.scripts]
@@ -15,6 +16,7 @@ claude-code-archive = "claude_code_archive.cli:main"
 package = true
 dev-dependencies = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.21.0",
     "mypy>=1.0",
     "ruff>=0.4",
 ]

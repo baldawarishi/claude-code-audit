@@ -281,12 +281,12 @@ See `docs/analyzer-design.md` for detailed implementation design.
 - [x] Pretty JSON output for `--patterns-only`
 - [x] CLI command with configurable thresholds
 
-### Phase 3b: LLM Classification
-- [ ] Classification prompt template with few-shot examples
-- [ ] Claude SDK client wrapper (async)
-- [ ] Scope detection (global 30% / project / subfolder)
-- [ ] Recommendation markdown generation by scope
-- [ ] Confidence scoring (high/medium/low)
+### Phase 3b: LLM Classification ✓
+- [x] Classification prompt template with few-shot examples
+- [x] Claude SDK client wrapper (async)
+- [x] Scope detection (global 30% / project / subfolder)
+- [x] Recommendation markdown generation by scope
+- [x] Confidence scoring (high/medium/low)
 
 ### Phase 3c: Apply Logic (future)
 - [ ] Checkbox parsing

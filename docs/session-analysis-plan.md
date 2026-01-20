@@ -87,11 +87,11 @@ Top by session count:
 ### Hardcoded Starting Projects
 
 For initial validation, run on 3 projects in parallel:
-1. `repo-drift` - 21 sessions, known project
+1. `java-tools-ai-tools-repo-drift` - 206 sessions, high volume with patterns
 2. `claude-archive` - 13 sessions, this project
-3. `cap-finreq` - 20 sessions, work project variety
+3. `java-build-split` - 26 sessions, work project variety
 
-This is hardcoded for now; will expand to all projects later be removing the hardcoding.
+This is hardcoded for now; will expand to all projects later by removing the hardcoding.
 
 ## Continuation Prompt
 
@@ -139,7 +139,7 @@ After each experiment, user reviews:
 ### Experiment 1: Implement Phase 1 Runner
 **Goal:** Create `analyze` command that runs per-project analysis
 **Status:** IN PROGRESS - AWAITING VERIFICATION
-**Output:** `archive/analysis/run-20260120-033035/` - 3 project files
+**Output:** `archive/analysis/run-20260120-034634/` - 3 project files
 **Verify:** User reviews output files, confirms insights are useful
 
 **Implementation Notes:**
@@ -147,6 +147,7 @@ After each experiment, user reviews:
 - Created `analyzer/session_analyzer.py` with `SessionAnalyzer` class
 - Modified `analyze` command - new session analysis is default, `--legacy` for old
 - Prompt template at `prompts/session_analysis.md`
+- Projects: java-tools-ai-tools-repo-drift (206), claude-archive (13), java-build-split (26)
 
 ### Experiment 2: Global Synthesis
 **Goal:** Run Phase 2 on Experiment 1 outputs

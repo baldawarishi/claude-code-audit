@@ -466,7 +466,7 @@ def _run_session_analysis(ctx, cfg: Config, output: Optional[Path]):
     from .analyzer.claude_client import AnalyzerClaudeClient
 
     # Hardcoded projects for Experiment 1
-    projects = ["repo-drift", "claude-archive", "cap-finreq"]
+    projects = ["java-tools-ai-tools-repo-drift", "claude-archive", "java-build-split"]
 
     db = Database(cfg.db_path)
 

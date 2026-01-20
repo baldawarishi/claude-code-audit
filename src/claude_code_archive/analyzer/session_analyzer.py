@@ -19,6 +19,14 @@ class DatabaseProtocol(Protocol):
         """Get metrics for a project."""
         ...
 
+    def get_global_percentiles(self) -> dict:
+        """Get global percentile statistics."""
+        ...
+
+    def get_project_session_stats(self, project: str) -> dict:
+        """Get session statistics for a project."""
+        ...
+
 
 def load_session_analysis_template() -> str:
     """Load the session analysis prompt template.
@@ -38,6 +46,14 @@ def build_session_analysis_prompt(
     output_tokens: int,
     tool_call_count: int,
     toml_dir: str,
+    global_p50_msgs: int,
+    global_p75_msgs: int,
+    global_p90_msgs: int,
+    global_p50_tokens: int,
+    project_avg_msgs: int,
+    project_min_msgs: int,
+    project_max_msgs: int,
+    project_avg_tokens: int,
 ) -> str:
     """Build the session analysis prompt with metrics.
 
@@ -49,6 +65,14 @@ def build_session_analysis_prompt(
         output_tokens: Total output tokens
         tool_call_count: Total tool calls
         toml_dir: Path to TOML transcript directory
+        global_p50_msgs: Global P50 message count
+        global_p75_msgs: Global P75 message count
+        global_p90_msgs: Global P90 message count
+        global_p50_tokens: Global P50 output tokens
+        project_avg_msgs: Project average message count
+        project_min_msgs: Project minimum message count
+        project_max_msgs: Project maximum message count
+        project_avg_tokens: Project average output tokens
 
     Returns:
         Formatted prompt string.
@@ -63,6 +87,14 @@ def build_session_analysis_prompt(
         output_tokens=output_tokens,
         tool_call_count=tool_call_count,
         toml_dir=toml_dir,
+        global_p50_msgs=global_p50_msgs,
+        global_p75_msgs=global_p75_msgs,
+        global_p90_msgs=global_p90_msgs,
+        global_p50_tokens=global_p50_tokens,
+        project_avg_msgs=project_avg_msgs,
+        project_min_msgs=project_min_msgs,
+        project_max_msgs=project_max_msgs,
+        project_avg_tokens=project_avg_tokens,
     )
 
 
@@ -102,6 +134,10 @@ class SessionAnalyzer:
         # Get project metrics from database
         metrics = self.db.get_project_metrics(project)
 
+        # Get global percentiles and project-specific stats
+        global_percentiles = self.db.get_global_percentiles()
+        project_stats = self.db.get_project_session_stats(project)
+
         # Build the prompt
         project_toml_dir = self.toml_dir / project
         prompt = build_session_analysis_prompt(
@@ -112,6 +148,14 @@ class SessionAnalyzer:
             output_tokens=metrics["total_output_tokens"],
             tool_call_count=metrics["tool_call_count"],
             toml_dir=str(project_toml_dir),
+            global_p50_msgs=global_percentiles["p50_msgs"],
+            global_p75_msgs=global_percentiles["p75_msgs"],
+            global_p90_msgs=global_percentiles["p90_msgs"],
+            global_p50_tokens=global_percentiles["p50_tokens"],
+            project_avg_msgs=project_stats["avg_msgs"],
+            project_min_msgs=project_stats["min_msgs"],
+            project_max_msgs=project_stats["max_msgs"],
+            project_avg_tokens=project_stats["avg_tokens"],
         )
 
         # Query Claude and return the response

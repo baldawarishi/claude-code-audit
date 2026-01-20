@@ -308,3 +308,154 @@ class TestDatabase:
         assert metrics["total_input_tokens"] == 0
         assert metrics["total_output_tokens"] == 0
         assert metrics["tool_call_count"] == 0
+
+    def test_get_global_percentiles(self, db):
+        """Test getting global percentile statistics across all projects."""
+        # Create sessions with varying message counts and tokens
+        sessions = [
+            # Small session: 2 messages
+            Session(
+                id="s1", project="p1", started_at="2026-01-01T10:00:00Z",
+                total_output_tokens=100,
+                messages=[
+                    Message(id="m1", session_id="s1", type="user", timestamp="2026-01-01T10:00:00Z", content="Hi"),
+                    Message(id="m2", session_id="s1", type="assistant", timestamp="2026-01-01T10:00:01Z", content="Hello"),
+                ],
+            ),
+            # Medium session: 4 messages
+            Session(
+                id="s2", project="p1", started_at="2026-01-01T11:00:00Z",
+                total_output_tokens=500,
+                messages=[
+                    Message(id="m3", session_id="s2", type="user", timestamp="2026-01-01T11:00:00Z", content="Help"),
+                    Message(id="m4", session_id="s2", type="assistant", timestamp="2026-01-01T11:00:01Z", content="Sure"),
+                    Message(id="m5", session_id="s2", type="user", timestamp="2026-01-01T11:00:02Z", content="More"),
+                    Message(id="m6", session_id="s2", type="assistant", timestamp="2026-01-01T11:00:03Z", content="Ok"),
+                ],
+            ),
+            # Large session: 6 messages
+            Session(
+                id="s3", project="p2", started_at="2026-01-01T12:00:00Z",
+                total_output_tokens=1000,
+                messages=[
+                    Message(id="m7", session_id="s3", type="user", timestamp="2026-01-01T12:00:00Z", content="A"),
+                    Message(id="m8", session_id="s3", type="assistant", timestamp="2026-01-01T12:00:01Z", content="B"),
+                    Message(id="m9", session_id="s3", type="user", timestamp="2026-01-01T12:00:02Z", content="C"),
+                    Message(id="m10", session_id="s3", type="assistant", timestamp="2026-01-01T12:00:03Z", content="D"),
+                    Message(id="m11", session_id="s3", type="user", timestamp="2026-01-01T12:00:04Z", content="E"),
+                    Message(id="m12", session_id="s3", type="assistant", timestamp="2026-01-01T12:00:05Z", content="F"),
+                ],
+            ),
+            # Very large session: 10 messages
+            Session(
+                id="s4", project="p2", started_at="2026-01-01T13:00:00Z",
+                total_output_tokens=2000,
+                messages=[
+                    Message(id=f"m{i}", session_id="s4", type="user" if i % 2 == 0 else "assistant",
+                            timestamp=f"2026-01-01T13:00:{i:02d}Z", content=f"Msg{i}")
+                    for i in range(13, 23)
+                ],
+            ),
+        ]
+
+        for session in sessions:
+            db.insert_session(session)
+
+        percentiles = db.get_global_percentiles()
+
+        # Should have p50, p75, p90 for messages and tokens
+        assert "p50_msgs" in percentiles
+        assert "p75_msgs" in percentiles
+        assert "p90_msgs" in percentiles
+        assert "p50_tokens" in percentiles
+        assert "p75_tokens" in percentiles
+        assert "p90_tokens" in percentiles
+
+        # With 4 sessions: [2, 4, 6, 10] messages
+        # Percentiles should increase monotonically
+        assert percentiles["p50_msgs"] >= 2  # At least min
+        assert percentiles["p75_msgs"] >= percentiles["p50_msgs"]  # Monotonic
+        assert percentiles["p90_msgs"] >= percentiles["p75_msgs"]  # Monotonic
+        assert percentiles["p90_msgs"] <= 10  # At most max
+
+    def test_get_global_percentiles_empty(self, db):
+        """Test getting global percentiles with no sessions."""
+        percentiles = db.get_global_percentiles()
+
+        # Should return zeros or defaults for empty database
+        assert percentiles["p50_msgs"] == 0
+        assert percentiles["p75_msgs"] == 0
+        assert percentiles["p90_msgs"] == 0
+        assert percentiles["p50_tokens"] == 0
+        assert percentiles["p75_tokens"] == 0
+        assert percentiles["p90_tokens"] == 0
+
+    def test_get_project_session_stats(self, db):
+        """Test getting session statistics for a specific project."""
+        # Create sessions for one project
+        sessions = [
+            Session(
+                id="s1", project="my-project", started_at="2026-01-01T10:00:00Z",
+                total_output_tokens=100,
+                messages=[
+                    Message(id="m1", session_id="s1", type="user", timestamp="2026-01-01T10:00:00Z", content="Hi"),
+                    Message(id="m2", session_id="s1", type="assistant", timestamp="2026-01-01T10:00:01Z", content="Hello"),
+                ],
+            ),
+            Session(
+                id="s2", project="my-project", started_at="2026-01-01T11:00:00Z",
+                total_output_tokens=500,
+                messages=[
+                    Message(id="m3", session_id="s2", type="user", timestamp="2026-01-01T11:00:00Z", content="Help"),
+                    Message(id="m4", session_id="s2", type="assistant", timestamp="2026-01-01T11:00:01Z", content="Sure"),
+                    Message(id="m5", session_id="s2", type="user", timestamp="2026-01-01T11:00:02Z", content="More"),
+                    Message(id="m6", session_id="s2", type="assistant", timestamp="2026-01-01T11:00:03Z", content="Ok"),
+                ],
+            ),
+            Session(
+                id="s3", project="my-project", started_at="2026-01-01T12:00:00Z",
+                total_output_tokens=1000,
+                messages=[
+                    Message(id="m7", session_id="s3", type="user", timestamp="2026-01-01T12:00:00Z", content="A"),
+                    Message(id="m8", session_id="s3", type="assistant", timestamp="2026-01-01T12:00:01Z", content="B"),
+                    Message(id="m9", session_id="s3", type="user", timestamp="2026-01-01T12:00:02Z", content="C"),
+                    Message(id="m10", session_id="s3", type="assistant", timestamp="2026-01-01T12:00:03Z", content="D"),
+                    Message(id="m11", session_id="s3", type="user", timestamp="2026-01-01T12:00:04Z", content="E"),
+                    Message(id="m12", session_id="s3", type="assistant", timestamp="2026-01-01T12:00:05Z", content="F"),
+                ],
+            ),
+            # Different project - should not be included
+            Session(
+                id="s4", project="other-project", started_at="2026-01-01T13:00:00Z",
+                total_output_tokens=9999,
+                messages=[
+                    Message(id=f"m{i}", session_id="s4", type="user" if i % 2 == 0 else "assistant",
+                            timestamp=f"2026-01-01T13:00:{i:02d}Z", content=f"Msg{i}")
+                    for i in range(13, 33)  # 20 messages
+                ],
+            ),
+        ]
+
+        for session in sessions:
+            db.insert_session(session)
+
+        stats = db.get_project_session_stats("my-project")
+
+        # Should have avg, min, max for messages and tokens
+        assert stats["avg_msgs"] == 4  # (2 + 4 + 6) / 3 = 4
+        assert stats["min_msgs"] == 2
+        assert stats["max_msgs"] == 6
+        assert stats["avg_tokens"] == 533  # (100 + 500 + 1000) / 3 ≈ 533
+        assert stats["min_tokens"] == 100
+        assert stats["max_tokens"] == 1000
+
+    def test_get_project_session_stats_empty(self, db):
+        """Test getting project stats for non-existent project."""
+        stats = db.get_project_session_stats("nonexistent")
+
+        assert stats["avg_msgs"] == 0
+        assert stats["min_msgs"] == 0
+        assert stats["max_msgs"] == 0
+        assert stats["avg_tokens"] == 0
+        assert stats["min_tokens"] == 0
+        assert stats["max_tokens"] == 0

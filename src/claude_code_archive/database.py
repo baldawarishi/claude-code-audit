@@ -434,3 +434,105 @@ class Database:
             "sidechain_sessions": sidechain_count,
             "regular_sessions": total_count - warmup_count,
         }
+
+    def get_global_percentiles(self) -> dict:
+        """Get global percentile statistics across all sessions.
+
+        Returns dict with:
+            - p50_msgs, p75_msgs, p90_msgs: message count percentiles
+            - p50_tokens, p75_tokens, p90_tokens: output token percentiles
+        """
+        conn = self.connect()
+
+        # Get session stats with message counts
+        cursor = conn.execute(
+            """
+            WITH session_stats AS (
+                SELECT
+                    s.id,
+                    COUNT(m.id) as msg_count,
+                    COALESCE(s.total_output_tokens, 0) as output_tokens
+                FROM sessions s
+                LEFT JOIN messages m ON s.id = m.session_id
+                GROUP BY s.id
+                HAVING msg_count > 0
+            ),
+            ranked AS (
+                SELECT
+                    msg_count,
+                    output_tokens,
+                    ROW_NUMBER() OVER (ORDER BY msg_count) as msg_rank,
+                    ROW_NUMBER() OVER (ORDER BY output_tokens) as token_rank,
+                    COUNT(*) OVER () as total
+                FROM session_stats
+            )
+            SELECT
+                MAX(CASE WHEN msg_rank = CAST(total * 0.50 AS INT) OR
+                         (total * 0.50 < 1 AND msg_rank = 1) THEN msg_count END) as p50_msgs,
+                MAX(CASE WHEN msg_rank = CAST(total * 0.75 AS INT) OR
+                         (total * 0.75 < 1 AND msg_rank = 1) THEN msg_count END) as p75_msgs,
+                MAX(CASE WHEN msg_rank = CAST(total * 0.90 AS INT) OR
+                         (total * 0.90 < 1 AND msg_rank = 1) THEN msg_count END) as p90_msgs,
+                MAX(CASE WHEN token_rank = CAST(total * 0.50 AS INT) OR
+                         (total * 0.50 < 1 AND token_rank = 1) THEN output_tokens END) as p50_tokens,
+                MAX(CASE WHEN token_rank = CAST(total * 0.75 AS INT) OR
+                         (total * 0.75 < 1 AND token_rank = 1) THEN output_tokens END) as p75_tokens,
+                MAX(CASE WHEN token_rank = CAST(total * 0.90 AS INT) OR
+                         (total * 0.90 < 1 AND token_rank = 1) THEN output_tokens END) as p90_tokens
+            FROM ranked
+            """
+        )
+        row = cursor.fetchone()
+
+        return {
+            "p50_msgs": row["p50_msgs"] or 0,
+            "p75_msgs": row["p75_msgs"] or 0,
+            "p90_msgs": row["p90_msgs"] or 0,
+            "p50_tokens": row["p50_tokens"] or 0,
+            "p75_tokens": row["p75_tokens"] or 0,
+            "p90_tokens": row["p90_tokens"] or 0,
+        }
+
+    def get_project_session_stats(self, project: str) -> dict:
+        """Get session statistics for a specific project.
+
+        Returns dict with:
+            - avg_msgs, min_msgs, max_msgs: message count stats
+            - avg_tokens, min_tokens, max_tokens: output token stats
+        """
+        conn = self.connect()
+
+        cursor = conn.execute(
+            """
+            WITH session_stats AS (
+                SELECT
+                    s.id,
+                    COUNT(m.id) as msg_count,
+                    COALESCE(s.total_output_tokens, 0) as output_tokens
+                FROM sessions s
+                LEFT JOIN messages m ON s.id = m.session_id
+                WHERE s.project = ?
+                GROUP BY s.id
+                HAVING msg_count > 0
+            )
+            SELECT
+                COALESCE(CAST(ROUND(AVG(msg_count)) AS INT), 0) as avg_msgs,
+                COALESCE(MIN(msg_count), 0) as min_msgs,
+                COALESCE(MAX(msg_count), 0) as max_msgs,
+                COALESCE(CAST(ROUND(AVG(output_tokens)) AS INT), 0) as avg_tokens,
+                COALESCE(MIN(output_tokens), 0) as min_tokens,
+                COALESCE(MAX(output_tokens), 0) as max_tokens
+            FROM session_stats
+            """,
+            (project,),
+        )
+        row = cursor.fetchone()
+
+        return {
+            "avg_msgs": row["avg_msgs"] or 0,
+            "min_msgs": row["min_msgs"] or 0,
+            "max_msgs": row["max_msgs"] or 0,
+            "avg_tokens": row["avg_tokens"] or 0,
+            "min_tokens": row["min_tokens"] or 0,
+            "max_tokens": row["max_tokens"] or 0,
+        }

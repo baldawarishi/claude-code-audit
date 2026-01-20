@@ -1,261 +1,140 @@
 # Session Analysis Plan
 
-Created: 2026-01-19
-Status: Ready to implement
+Created: 2026-01-19 | Status: Ready to implement | Lines target: <300
 
 ## Overview
 
-A human-in-the-loop approach to understanding session patterns before automating recommendations. Replaces the LLM classifier with structured analysis that Claude agents can build on.
+Human-in-the-loop approach to understand session patterns before automating. Replaces LLM classifier with structured analysis.
 
-## Goals
+## Experiment Workflow (IMPORTANT)
 
-1. Understand what patterns actually matter (vs noise)
-2. Incremental improvements, not groundbreaking changes
-3. Each experiment ends with manual verification
-4. Analysis files enable future interactive exploration
+1. **One experiment at a time** - Never start experiment N+1 until N is verified
+2. **Each session = at most one experiment** - End session after manual verification
+3. **Closed feedback loop** - Update this plan after each experiment with learnings
+4. **Keep plan <300 lines** - Archive old experiment details to separate files if needed
+
+## Continuation Prompt
+
+```
+Continue session analysis. Read docs/session-analysis-plan.md.
+
+Current experiment: [NUMBER]
+Status: [implementing | ready-for-verification | verified]
+Next: [what to do]
+
+Ask questions if anything unclear. Push often, use todos, read code directly.
+```
 
 ## Architecture
 
 ```
-Phase 1: Per-project analysis
-├── For each archive project folder:
-│   ├── Query sqlite for session metrics (good/bad/ugly definitions)
-│   ├── Point Claude at TOML files in archive/transcripts/{project}/
-│   ├── Claude randomly picks sessions, reads until patterns emerge
-│   └── Output: archive/analysis/run-{timestamp}/{project}.md
+Phase 1: Per-project analysis (Experiments 1-3)
+├── Query sqlite for metrics → write context file
+├── Invoke `claude` CLI with context → reads TOML files
+└── Output: archive/analysis/run-{timestamp}/{project}.md
 
-Phase 2: Global synthesis
-├── Point Claude at archive/analysis/run-{timestamp}/*.md
-├── Find cross-project patterns worth optimizing
+Phase 2: Global synthesis (Experiment 4)
+├── Point Claude at all project analysis files
 └── Output: archive/analysis/run-{timestamp}/global-synthesis.md
 
-Phase 3: Interactive exploration (free)
-└── User can spin up Claude, point at analysis folder
-    └── File paths in analysis let Claude dig into raw TOML when needed
+Phase 3: Interactive exploration (Experiment 5)
+└── User asks questions, Claude digs into analysis + TOML as needed
 ```
 
-## Session Quality Definitions
+## Session Quality Definitions (for Claude context)
 
-Based on sqlite data, provide Claude with these heuristics:
+| Quality | Turns | Tokens | Characteristics |
+|---------|-------|--------|-----------------|
+| Good | <5 | <20k | Quick, efficient, task completed |
+| Okay | 5-15 | 20-50k | Normal work, some iteration |
+| Ugly | >15 | >50k | Struggling, restarts, undo work |
 
-| Quality | Criteria (approximate) |
-|---------|------------------------|
-| **Good** | Few turns (<5), low tokens (<20k), task completed |
-| **Okay** | Medium turns (5-15), medium tokens (20k-50k) |
-| **Ugly** | Many turns (>15), high tokens (>50k), lots of back-and-forth |
+## Implementation
 
-These come from actual data:
-- Average turns per session varies by project (5-18)
-- Average tokens varies widely (28k-55k)
-- High token sessions often indicate struggling or complex tasks
+### Files to Modify
+- `cli.py` - Replace `analyze` command logic
+- `analyzer/` - Simplify: remove classifier.py, claude_client.py
 
-## Output Format Requirements
+### Test Projects (hardcoded for now)
+1. `repo-drift` (21 sessions) - known project
+2. `claude-archive` (13 sessions) - this project
+3. `cap-finreq` (20 sessions) - work variety
 
-Each project analysis file must include:
-
-1. **Session summaries** with file paths to source TOML
-2. **Metrics observed** (turns, tokens, duration, tools used)
-3. **Patterns worth noting** (interesting observations)
-4. **Potential optimizations** (things that could help)
-
-Format should support:
-- Human review (readable markdown)
-- Claude analysis (structured enough to parse)
-- Future Phase 3c (skill generation, CLAUDE.md updates)
-
-## Implementation Details
-
-### File Locations
-
-- Input: `archive/transcripts/{project}/*.toml`
-- Metrics: `archive/sessions.db` (sqlite)
-- Output: `archive/analysis/run-{timestamp}/{project}.md`
-- Global: `archive/analysis/run-{timestamp}/global-synthesis.md`
-
-### Projects in Archive
-
-```
-Total: 38 project folders
-Top by session count:
-- java-tools-ai-tools-repo-drift (206 sessions)
-- quamina-go-rs-quamina-rs (121 sessions)
-- personal-rishibaldawa-banking-ai-onboarding (31 sessions)
-- java-build-split (26 sessions)
-- repo-drift (21 sessions)
+### Subprocess Invocation
+```python
+subprocess.run([
+    "claude", "--print", "-p", prompt,
+    "--output-format", "text"
+], capture_output=True)
 ```
 
-### Hardcoded Starting Projects
-
-For initial validation, run on 3 projects in parallel:
-1. `repo-drift` - 21 sessions, known project
-2. `claude-archive` - 13 sessions, this project
-3. `cap-finreq` - 20 sessions, work project variety
-
-This is hardcoded for now; will expand to all projects later.
-
-## Continuation Prompt
-
-Paste this at the start of each new session:
-
+### Progress Output
 ```
-Continue work on session analysis. Read docs/session-analysis-plan.md for context.
-
-Current phase: [FILL IN]
-Last completed: [FILL IN]
-Next step: [FILL IN]
-
-Ask me questions if anything is unclear before proceeding.
+[1/3] Analyzing repo-drift (21 sessions)...
+[2/3] Analyzing claude-archive (13 sessions)...
+[3/3] Analyzing cap-finreq (20 sessions)...
+Done. Output: archive/analysis/run-20260119-143052/
 ```
-
-## Experiment Log
-
-### Experiment 1: Implement Phase 1 Runner
-**Goal:** Create script that runs per-project analysis for 3 projects
-**Status:** IN PROGRESS
-**Projects:** repo-drift, claude-archive, cap-finreq
-**Verification:** Manual review of output files in `archive/analysis/run-{timestamp}/`
-
-### Experiment 2: Global Synthesis
-**Goal:** Run Phase 2 on Experiment 1 outputs
-**Status:** Blocked on Experiment 1
-**Verification:** Manual review of global-synthesis.md
-
-### Experiment 3: Interactive Exploration
-**Goal:** Test asking questions against analysis files
-**Status:** Blocked on Experiment 2
-**Verification:** Can Claude answer questions and dig into TOML when needed?
 
 ---
 
-## TOML Structure (Resolved)
+## Current Experiment
 
-Each session TOML file contains:
+### Experiment 1: Implement Phase 1 Runner
 
+**Goal:** Modify `analyze` command to run per-project analysis for 3 hardcoded projects
+
+**Implementation tasks:**
+- [ ] Simplify analyzer/ (remove unused LLM code)
+- [ ] Add sqlite query for project metrics
+- [ ] Write prompt template with context
+- [ ] Subprocess call to `claude` CLI
+- [ ] Progress output to terminal
+- [ ] Capture output to run-{timestamp}/ folder
+
+**Verification (manual by user):**
+1. Run: `claude-code-archive analyze --archive-dir ./archive`
+2. Check: Output files created in `archive/analysis/run-{timestamp}/`
+3. Review: Are the analysis files useful? Readable? Have file paths?
+4. Decide: Proceed to Experiment 2, or iterate on Experiment 1?
+
+**Status:** NOT STARTED
+
+---
+
+## Experiment Queue
+
+| # | Name | Depends On | Goal |
+|---|------|------------|------|
+| 1 | Phase 1 Runner | - | Per-project analysis for 3 projects |
+| 2 | Tune Prompt | 1 verified | Improve analysis quality based on review |
+| 3 | All Projects | 2 verified | Remove hardcoding, run on all projects |
+| 4 | Global Synthesis | 3 verified | Cross-project pattern detection |
+| 5 | Interactive | 4 verified | Q&A against analysis files |
+
+---
+
+## Reference
+
+### TOML Structure
 ```toml
 [session]
-id = "uuid"
-slug = "human-readable-slug"
-project = "project-name"
-cwd = "/path/to/working/dir"
-git_branch = "branch-name"
-started_at = "ISO timestamp"
-ended_at = "ISO timestamp"
-model = "claude-opus-4-5-20251101"
-claude_version = "2.1.1"
-input_tokens = 2775
-output_tokens = 13593
-cache_read_tokens = 4581111
+id, slug, project, cwd, git_branch, started_at, ended_at
+model, claude_version, input_tokens, output_tokens, cache_read_tokens
 
 [[turns]]
-number = 1
-timestamp = "ISO timestamp"
-
-[turns.user]
-content = "user message"
-
-[turns.assistant]
-content = "assistant response"
-thinking = "thinking content (if available)"
+number, timestamp
+[turns.user] content
+[turns.assistant] content, thinking
 ```
 
-## Design Decisions (Resolved)
+### Design Decisions
+- Analysis depth: Detailed (step-by-step)
+- Pattern threshold: Claude decides, focus pragmatic
+- Include thinking: Yes
+- Data: SQLite for stats, TOML for content
 
-1. **Analysis depth:** Detailed - step-by-step what was tried, what worked/didn't
-2. **Pattern threshold:** Let Claude decide, but focus on pragmatic optimizations (not over-the-top)
-3. **Include thinking blocks:** Yes - may reveal reasoning patterns
-4. **Data sources:**
-   - SQLite for exact stats/numbers (turn counts, token usage, tool call counts)
-   - TOML for browsing/reading session content
-   - Can extend TOML export if more fields would help Claude form opinions
-
-## Implementation Details
-
-### Current Code to Modify
-
-**Keep:**
-- `cli.py` - Modify `analyze` command
-- `database.py` - Use for metrics queries
-
-**Replace/Simplify:**
-- `analyzer/classifier.py` - Remove LLM classifier (not working for us)
-- `analyzer/claude_client.py` - Remove (will use subprocess instead)
-- `analyzer/patterns.py` - Keep for metrics extraction, simplify
-- `analyzer/renderer.py` - Simplify or remove
-
-### New Approach
-
-```python
-# In cli.py analyze command:
-
-1. Query SQLite for project metrics:
-   - Sessions per project
-   - Avg turns, tokens per session
-   - Tool call counts
-
-2. For each project (3 hardcoded for now):
-   a. Create context file with:
-      - Project metrics from SQLite
-      - Good/bad/ugly session definitions
-      - Instructions for Claude
-      - Path to TOML files
-
-   b. Invoke Claude CLI:
-      subprocess.run([
-          "claude", "--print",
-          "-p", prompt_with_context_file_path,
-          "--output-format", "text"
-      ])
-
-   c. Capture output to:
-      archive/analysis/run-{timestamp}/{project}.md
-
-3. Show progress:
-   - "Analyzing project 1/3: repo-drift..."
-   - "Analyzing project 2/3: claude-archive..."
-   - etc.
-```
-
-### Hardcoded Projects (for testing)
-
-```python
-TEST_PROJECTS = [
-    "repo-drift",      # 21 sessions, known project
-    "claude-archive",  # 13 sessions, this project
-    "cap-finreq",      # 20 sessions, work variety
-]
-```
-
-### Claude Prompt Template
-
-```markdown
-# Session Analysis for {project}
-
-## Your Task
-Read sessions from `{toml_folder}` to understand usage patterns.
-Pick sessions randomly. Keep reading until you see patterns worth optimizing.
-Focus on pragmatic improvements, not over-the-top suggestions.
-
-## Project Metrics (from database)
-- Total sessions: {session_count}
-- Avg turns per session: {avg_turns}
-- Avg tokens per session: {avg_tokens}
-
-## Session Quality Definitions
-- **Good**: <5 turns, <20k tokens - quick, efficient
-- **Okay**: 5-15 turns, 20-50k tokens - normal work
-- **Ugly**: >15 turns, >50k tokens - struggling or complex
-
-## Output Format
-Write detailed analysis to `{output_file}`:
-1. Sessions reviewed (with file paths)
-2. Patterns observed
-3. Potential optimizations
-4. Things that worked well
-```
-
-## Related Files
-
-- `docs/analyzer-issues.md` - Problems with current analyzer
-- `docs/analyzer-research.md` - Academic research on pattern mining
-- `docs/analyzer-design.md` - Original analyzer design (Phase 3c reference)
-- `src/claude_code_archive/analyzer/` - Current analyzer code (to be replaced/simplified)
+### Related Files
+- `docs/analyzer-issues.md` - Problems with current approach
+- `docs/analyzer-research.md` - Academic research
+- `docs/analyzer-design.md` - Original design (Phase 3c reference)

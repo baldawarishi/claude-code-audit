@@ -65,6 +65,8 @@ class Session:
     total_cache_read_tokens: int = 0
     model: Optional[str] = None
     parent_session_id: Optional[str] = None  # For agent sessions, links to parent
+    is_warmup: bool = False  # True if this is a warmup/cache-priming session
+    is_sidechain: bool = False  # True if session contains sidechain messages
     messages: list[Message] = field(default_factory=list)
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)

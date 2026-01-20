@@ -91,6 +91,39 @@ def extract_tool_results(content, session_id: str, timestamp: str) -> list[ToolR
     return tool_results
 
 
+def is_warmup_session(session: Session) -> bool:
+    """Detect if a session is a warmup/cache-priming session.
+
+    Warmup sessions are identified by:
+    - First user message content is exactly "Warmup" (case-insensitive)
+    - Typically very short (1-2 messages)
+    - Often sidechain sessions spawned for cache maintenance
+    """
+    if not session.messages:
+        return False
+
+    # Find first user message
+    for msg in session.messages:
+        if msg.type == "user":
+            content = msg.content.strip() if msg.content else ""
+            # Check for exact "Warmup" match (case-insensitive)
+            if content.lower() == "warmup":
+                return True
+            # Only check first user message
+            break
+
+    return False
+
+
+def is_sidechain_session(session: Session) -> bool:
+    """Detect if a session contains sidechain messages.
+
+    Sidechain sessions are background tasks (warmup, auto-backgrounded work, etc.)
+    that run independently of the main conversation.
+    """
+    return any(msg.is_sidechain for msg in session.messages)
+
+
 def parse_session(file_path: Path, project_name: str) -> Session:
     """Parse a JSONL session file into a Session object."""
     session_id = file_path.stem
@@ -225,6 +258,10 @@ def parse_session(file_path: Path, project_name: str) -> Session:
     session.total_input_tokens = total_input
     session.total_output_tokens = total_output
     session.total_cache_read_tokens = total_cache
+
+    # Detect warmup and sidechain sessions
+    session.is_warmup = is_warmup_session(session)
+    session.is_sidechain = is_sidechain_session(session)
 
     return session
 

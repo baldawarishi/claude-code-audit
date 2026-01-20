@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     total_input_tokens INTEGER,
     total_output_tokens INTEGER,
     total_cache_read_tokens INTEGER,
-    model TEXT
+    model TEXT,
+    is_warmup BOOLEAN DEFAULT FALSE,
+    is_sidechain BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -75,6 +77,9 @@ MIGRATIONS = [
     "ALTER TABLE messages ADD COLUMN is_sidechain BOOLEAN DEFAULT FALSE",
     # Phase 2: Agent relationships
     "ALTER TABLE sessions ADD COLUMN parent_session_id TEXT",
+    # Phase 3: Warmup/sidechain session detection
+    "ALTER TABLE sessions ADD COLUMN is_warmup BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE sessions ADD COLUMN is_sidechain BOOLEAN DEFAULT FALSE",
 ]
 
 
@@ -129,8 +134,9 @@ class Database:
             """
             INSERT OR REPLACE INTO sessions
             (id, project, cwd, git_branch, slug, summary, parent_session_id, started_at, ended_at,
-             claude_version, total_input_tokens, total_output_tokens, total_cache_read_tokens, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             claude_version, total_input_tokens, total_output_tokens, total_cache_read_tokens, model,
+             is_warmup, is_sidechain)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session.id,
@@ -147,6 +153,8 @@ class Database:
                 session.total_output_tokens,
                 session.total_cache_read_tokens,
                 session.model,
+                session.is_warmup,
+                session.is_sidechain,
             ),
         )
 
@@ -401,4 +409,28 @@ class Database:
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "tool_call_count": tool_call_count,
+        }
+
+    def get_warmup_stats(self) -> dict:
+        """Get statistics about warmup/sidechain sessions."""
+        conn = self.connect()
+
+        cursor = conn.execute(
+            "SELECT COUNT(*) as count FROM sessions WHERE is_warmup = 1"
+        )
+        warmup_count = cursor.fetchone()["count"]
+
+        cursor = conn.execute(
+            "SELECT COUNT(*) as count FROM sessions WHERE is_sidechain = 1"
+        )
+        sidechain_count = cursor.fetchone()["count"]
+
+        cursor = conn.execute("SELECT COUNT(*) as count FROM sessions")
+        total_count = cursor.fetchone()["count"]
+
+        return {
+            "total_sessions": total_count,
+            "warmup_sessions": warmup_count,
+            "sidechain_sessions": sidechain_count,
+            "regular_sessions": total_count - warmup_count,
         }

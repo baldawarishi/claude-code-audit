@@ -4,7 +4,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from claude_code_archive.parser import (
     extract_text_content,
@@ -15,7 +14,10 @@ from claude_code_archive.parser import (
     parse_session,
     get_project_name_from_dir,
     is_tmp_directory,
+    is_warmup_session,
+    is_sidechain_session,
 )
+from claude_code_archive.models import Session, Message
 
 
 class TestExtractTextContent:
@@ -324,6 +326,149 @@ class TestGetProjectNameFromDir:
         # Should skip: repos, src, dev, work, documents, github, git
         assert get_project_name_from_dir("-Users-john-github-my-repo") == "my-repo"
         assert get_project_name_from_dir("-Users-john-src-backend") == "backend"
+
+
+class TestIsWarmupSession:
+    def test_detects_warmup_message(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="Warmup"),
+                Message(id="2", session_id="test", type="assistant", timestamp="", content="Starting exploration..."),
+            ]
+        )
+        assert is_warmup_session(session) is True
+
+    def test_detects_warmup_case_insensitive(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="warmup"),
+            ]
+        )
+        assert is_warmup_session(session) is True
+
+    def test_detects_warmup_with_whitespace(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="  Warmup  "),
+            ]
+        )
+        assert is_warmup_session(session) is True
+
+    def test_rejects_non_warmup(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="Hello, help me with code"),
+            ]
+        )
+        assert is_warmup_session(session) is False
+
+    def test_rejects_warmup_in_longer_message(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="Do a warmup exercise"),
+            ]
+        )
+        assert is_warmup_session(session) is False
+
+    def test_handles_empty_session(self):
+        session = Session(id="test", project="test", messages=[])
+        assert is_warmup_session(session) is False
+
+
+class TestIsSidechainSession:
+    def test_detects_sidechain_messages(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="Warmup", is_sidechain=True),
+            ]
+        )
+        assert is_sidechain_session(session) is True
+
+    def test_rejects_non_sidechain(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="Hello", is_sidechain=False),
+            ]
+        )
+        assert is_sidechain_session(session) is False
+
+    def test_handles_mixed_messages(self):
+        session = Session(
+            id="test",
+            project="test",
+            messages=[
+                Message(id="1", session_id="test", type="user", timestamp="", content="Hello", is_sidechain=False),
+                Message(id="2", session_id="test", type="assistant", timestamp="", content="Hi", is_sidechain=True),
+            ]
+        )
+        assert is_sidechain_session(session) is True
+
+    def test_handles_empty_session(self):
+        session = Session(id="test", project="test", messages=[])
+        assert is_sidechain_session(session) is False
+
+
+class TestParseSessionWarmupDetection:
+    def test_sets_is_warmup_flag(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "user",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "message": {"role": "user", "content": "Warmup"},
+            }) + "\n")
+            f.write(json.dumps({
+                "type": "assistant",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-01T10:00:01Z",
+                "message": {"role": "assistant", "content": "Starting exploration..."},
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.is_warmup is True
+
+    def test_sets_is_sidechain_flag(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "user",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "isSidechain": True,
+                "message": {"role": "user", "content": "Warmup"},
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.is_sidechain is True
+
+    def test_regular_session_no_flags(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps({
+                "type": "user",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-01T10:00:00Z",
+                "message": {"role": "user", "content": "Help me with code"},
+            }) + "\n")
+            f.flush()
+
+            session = parse_session(Path(f.name), "test-project")
+            assert session.is_warmup is False
+            assert session.is_sidechain is False
 
 
 class TestIsTmpDirectory:

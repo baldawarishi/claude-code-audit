@@ -1,8 +1,7 @@
 """Tests for session analyzer module."""
 
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -123,7 +122,7 @@ class TestSessionAnalyzer:
             toml_dir=Path("/fake/toml"),
         )
 
-        result = await analyzer.analyze_project("empty-project")
+        await analyzer.analyze_project("empty-project")
 
         # Should still call Claude even with empty project
         mock_client.query.assert_called_once()

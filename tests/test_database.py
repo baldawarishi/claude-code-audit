@@ -242,3 +242,69 @@ class TestDatabase:
         assert tree["children"][0]["session"]["id"] == "child1"
         assert len(tree["children"][0]["children"]) == 1
         assert tree["children"][0]["children"][0]["session"]["id"] == "grandchild"
+
+    def test_get_project_metrics(self, db):
+        """Test getting aggregate metrics for a project."""
+        # Create 2 sessions with multiple messages
+        session1 = Session(
+            id="s1",
+            project="my-project",
+            started_at="2026-01-01T10:00:00Z",
+            ended_at="2026-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=200,
+            messages=[
+                Message(id="m1", session_id="s1", type="user", timestamp="2026-01-01T10:00:00Z", content="Hello"),
+                Message(id="m2", session_id="s1", type="assistant", timestamp="2026-01-01T10:00:01Z", content="Hi"),
+                Message(id="m3", session_id="s1", type="user", timestamp="2026-01-01T10:00:02Z", content="Help"),
+                Message(id="m4", session_id="s1", type="assistant", timestamp="2026-01-01T10:00:03Z", content="Sure"),
+            ],
+            tool_calls=[
+                ToolCall(id="tc1", message_id="m2", session_id="s1", tool_name="Read", input_json="{}", timestamp="2026-01-01T10:00:01Z"),
+                ToolCall(id="tc2", message_id="m4", session_id="s1", tool_name="Edit", input_json="{}", timestamp="2026-01-01T10:00:03Z"),
+            ],
+        )
+        session2 = Session(
+            id="s2",
+            project="my-project",
+            started_at="2026-01-02T10:00:00Z",
+            ended_at="2026-01-02T11:00:00Z",
+            total_input_tokens=150,
+            total_output_tokens=250,
+            messages=[
+                Message(id="m5", session_id="s2", type="user", timestamp="2026-01-02T10:00:00Z", content="Test"),
+                Message(id="m6", session_id="s2", type="assistant", timestamp="2026-01-02T10:00:01Z", content="Ok"),
+            ],
+            tool_calls=[
+                ToolCall(id="tc3", message_id="m6", session_id="s2", tool_name="Bash", input_json="{}", timestamp="2026-01-02T10:00:01Z"),
+            ],
+        )
+        # Another project - should not be counted
+        other_session = Session(
+            id="s3",
+            project="other-project",
+            started_at="2026-01-03T10:00:00Z",
+            total_input_tokens=999,
+            total_output_tokens=999,
+        )
+
+        db.insert_session(session1)
+        db.insert_session(session2)
+        db.insert_session(other_session)
+
+        metrics = db.get_project_metrics("my-project")
+
+        assert metrics["session_count"] == 2
+        assert metrics["turn_count"] == 3  # 2 turns in s1 + 1 turn in s2 (user+assistant pairs)
+        assert metrics["total_input_tokens"] == 250  # 100 + 150
+        assert metrics["total_output_tokens"] == 450  # 200 + 250
+        assert metrics["tool_call_count"] == 3  # 2 + 1
+
+    def test_get_project_metrics_empty(self, db):
+        """Test getting metrics for non-existent project."""
+        metrics = db.get_project_metrics("nonexistent")
+        assert metrics["session_count"] == 0
+        assert metrics["turn_count"] == 0
+        assert metrics["total_input_tokens"] == 0
+        assert metrics["total_output_tokens"] == 0
+        assert metrics["tool_call_count"] == 0

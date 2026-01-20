@@ -342,3 +342,63 @@ class Database:
             "SELECT * FROM sessions WHERE parent_session_id IS NULL ORDER BY started_at DESC"
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_project_metrics(self, project: str) -> dict:
+        """Get aggregate metrics for a project.
+
+        Returns dict with:
+            - session_count: number of sessions
+            - turn_count: number of user+assistant pairs
+            - total_input_tokens: sum of input tokens across sessions
+            - total_output_tokens: sum of output tokens across sessions
+            - tool_call_count: total tool calls
+        """
+        conn = self.connect()
+
+        # Session count and token totals
+        cursor = conn.execute(
+            """
+            SELECT
+                COUNT(*) as session_count,
+                COALESCE(SUM(total_input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(total_output_tokens), 0) as total_output_tokens
+            FROM sessions WHERE project = ?
+            """,
+            (project,),
+        )
+        row = cursor.fetchone()
+        session_count = row["session_count"]
+        total_input_tokens = row["total_input_tokens"]
+        total_output_tokens = row["total_output_tokens"]
+
+        # Turn count: count user messages (each user message pairs with an assistant response)
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*) as turn_count
+            FROM messages m
+            JOIN sessions s ON m.session_id = s.id
+            WHERE s.project = ? AND m.type = 'user'
+            """,
+            (project,),
+        )
+        turn_count = cursor.fetchone()["turn_count"]
+
+        # Tool call count
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*) as tool_call_count
+            FROM tool_calls tc
+            JOIN sessions s ON tc.session_id = s.id
+            WHERE s.project = ?
+            """,
+            (project,),
+        )
+        tool_call_count = cursor.fetchone()["tool_call_count"]
+
+        return {
+            "session_count": session_count,
+            "turn_count": turn_count,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "tool_call_count": tool_call_count,
+        }

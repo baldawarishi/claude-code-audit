@@ -102,7 +102,127 @@ Suggested process:
 4. For multi-step workflows: create checklist upfront
 ```
 
-### 3. Prompt Improvements
+### 3. Skills
+
+Custom slash commands that automate repetitive multi-step workflows. Skills are stored in `.claude/skills/<name>/SKILL.md` and can be invoked with `/name`.
+
+**When to suggest:**
+- Same sequence of tool calls repeated across 5+ sessions
+- Multi-step workflow with consistent pattern (e.g., lint → test → commit)
+- Project-specific commands that Claude needs to learn
+
+**Skill frontmatter options:**
+- `name` - Slash command name (defaults to directory name)
+- `description` - When Claude should use this skill
+- `disable-model-invocation: true` - Only user can invoke (for side effects)
+- `allowed-tools` - Tools Claude can use without permission
+- `context: fork` - Run in isolated subagent
+- `agent` - Which subagent type (Explore, Plan, etc.)
+
+**Example output:**
+```markdown
+## Recommended Skill: /release
+
+Pattern found: 8 sessions followed the same release workflow
+
+Create `.claude/skills/release/SKILL.md`:
+```yaml
+---
+name: release
+description: Prepare and publish a release
+disable-model-invocation: true
+allowed-tools: Bash(npm:*), Bash(git:*), Bash(gh:*)
+---
+
+# Release Workflow
+
+1. Run tests: `npm test`
+2. Bump version: `npm version $ARGUMENTS`
+3. Build: `npm run build`
+4. Create tag and push: `git push --follow-tags`
+5. Create GitHub release: `gh release create`
+```
+```
+
+### 4. Hooks
+
+Shell commands that run at specific lifecycle events. Configured in `.claude/settings.json` or `.claude/settings.local.json`.
+
+**When to suggest:**
+- Validation errors caught late that could be caught early
+- Consistent post-action steps (e.g., always format after edit)
+- Policy enforcement (e.g., never commit to main)
+
+**Hook events:**
+- `PreToolUse` - Before a tool executes (can block/allow/modify)
+- `PostToolUse` - After a tool succeeds
+- `UserPromptSubmit` - When user submits a prompt
+- `Stop` - When Claude finishes responding
+- `SessionStart` - When session begins
+
+**Hook matchers (for tool events):**
+- Exact match: `Write`, `Bash`
+- Regex: `Edit|Write`, `Bash`
+- All tools: `*`
+
+**Example output:**
+```markdown
+## Recommended Hook: Pre-commit Validation
+
+Pattern found: 6 sessions had commits rejected by CI that could have been caught locally
+
+Add to `.claude/settings.json`:
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/validate-commit.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Where `validate-commit.sh` checks if it's a git commit and runs tests:
+```bash
+#!/bin/bash
+INPUT=$(cat)
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
+
+if [[ "$COMMAND" == git\ commit* ]]; then
+  npm run lint && npm test || exit 2
+fi
+exit 0
+```
+```
+
+**Example: Auto-format after file edits:**
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "prettier --write \"$CLAUDE_PROJECT_DIR\"/**/*.{js,ts,tsx}"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### 5. Prompt Improvements
 
 Suggestions for how users can prompt more effectively.
 
@@ -122,6 +242,32 @@ Suggestion: For yes/no questions, prefix with "Brief answer:"
 - After: "Brief answer: Is this a bug or expected?"
 ```
 
+### 6. MCP Server Suggestions
+
+External tool integrations that could improve workflows.
+
+**When to suggest:**
+- Repeated manual lookups that an MCP could automate
+- Integration with external services (Jira, Linear, Sentry, etc.)
+- Database or API access patterns
+
+**Example output:**
+```markdown
+## Recommended MCP: Linear Integration
+
+Pattern found: 5 sessions involved manually copying Linear ticket details
+
+Install the Linear MCP server:
+```bash
+claude mcp add linear
+```
+
+Then Claude can directly:
+- Fetch ticket details: "What's the status of LIN-123?"
+- Update tickets: "Mark LIN-123 as in progress"
+- Create tickets: "Create a bug ticket for the auth issue"
+```
+
 ## Recommendation Priority Scoring
 
 Recommendations are ranked by:
@@ -139,8 +285,11 @@ Priority Score = (sessions_affected * 2) +
 ```
 
 Where actionability_score:
-- CLAUDE.md addition: 10 (very easy)
-- Workflow guideline: 5 (medium)
+- CLAUDE.md addition: 10 (copy-paste)
+- Skill creation: 8 (create file, immediate benefit)
+- Hook setup: 7 (create file + script, automates enforcement)
+- MCP server: 6 (install + configure)
+- Workflow guideline: 5 (process change)
 - Prompt improvement: 3 (requires user behavior change)
 
 ## Phase 3 Implementation Plan
@@ -152,12 +301,13 @@ Extract structured recommendations from global-synthesis.md:
 ```python
 @dataclass
 class Recommendation:
-    category: str  # "claude_md" | "workflow" | "prompt"
+    category: str  # "claude_md" | "skill" | "hook" | "mcp" | "workflow" | "prompt"
     title: str
     description: str
     evidence: list[str]  # File paths and quotes
     estimated_impact: int  # Token savings
     priority_score: float
+    output_files: list[str]  # Files to generate
 ```
 
 ### 3.2 Generate Actionable Output
@@ -167,6 +317,21 @@ For each recommendation category, generate appropriate output:
 **CLAUDE.md recommendations:**
 - Output as markdown snippet ready to copy-paste
 - Include source evidence for verification
+
+**Skill recommendations:**
+- Generate complete `.claude/skills/<name>/SKILL.md` file
+- Include frontmatter with appropriate options
+- Reference supporting files if needed
+
+**Hook recommendations:**
+- Generate `.claude/settings.json` additions
+- Include any helper scripts needed
+- Document hook behavior and exit codes
+
+**MCP server recommendations:**
+- Provide `claude mcp add` command
+- Document required environment variables
+- Show example usage
 
 **Workflow recommendations:**
 - Output as checklist format

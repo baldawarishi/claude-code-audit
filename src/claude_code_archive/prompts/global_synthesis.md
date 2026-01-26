@@ -117,12 +117,14 @@ After writing the narrative recommendations above, output a TOML block containin
 
 | Category | When to Use | Content Format |
 |----------|-------------|----------------|
-| `claude_md` | Add documentation to CLAUDE.md | Markdown snippet to add |
-| `skill` | Create a custom slash command | SKILL.md file content with frontmatter |
-| `hook` | Add lifecycle event hook | JSON settings.json snippet |
-| `mcp` | Suggest MCP server integration | `claude mcp add` command |
-| `workflow` | Process/workflow guideline | Markdown checklist |
-| `prompt` | User prompting improvement | Before/after examples |
+| `claude_md` | **Brief** project-specific rules Claude can't infer from code (max 10-15 lines) | Concise markdown snippet |
+| `skill` | Reusable workflows, domain knowledge, or multi-step tasks (can be longer) | SKILL.md file with YAML frontmatter |
+| `hook` | Mandatory actions that must happen every time (formatting, validation) | JSON settings.json snippet |
+| `mcp` | External service integrations (Jira, Linear, databases) | `claude mcp add` command |
+| `workflow` | Process guidelines for humans to follow | Markdown checklist |
+| `prompt` | User prompting improvements | Before/after examples |
+
+**IMPORTANT**: Use `skill` instead of `claude_md` for detailed guidelines, examples, or domain knowledge. CLAUDE.md is loaded every session so keep it brief. Skills load on-demand.
 
 Output format (MUST be valid TOML):
 
@@ -158,11 +160,14 @@ content = """
 ---
 name: release
 description: Prepare and publish a release
+argument-hint: "[version]"
 disable-model-invocation: true
-allowed-tools: Bash(npm:*), Bash(git:*), Bash(gh:*)
+allowed-tools: Read, Bash
 ---
 
 # Release Workflow
+
+Release version: $ARGUMENTS
 
 1. Run tests: `npm test`
 2. Bump version: `npm version $ARGUMENTS`
@@ -174,6 +179,35 @@ allowed-tools: Bash(npm:*), Bash(git:*), Bash(gh:*)
 [recommendations.metadata]
 skill_name = "release"
 skill_description = "Prepare and publish a release"
+
+[[recommendations]]
+category = "skill"
+title = "Code Review Skill"
+description = "Run code review in isolated subagent context"
+evidence = ["Multiple sessions showed need for isolated review without context pollution"]
+estimated_impact = 3000
+priority_score = 6.0
+content = """
+---
+name: review
+description: Review code changes for issues
+context: fork
+agent: Explore
+allowed-tools: Read, Grep, Glob
+---
+
+Review the code changes for:
+- Logic errors and edge cases
+- Security vulnerabilities
+- Performance issues
+- Code style violations
+
+Provide specific line references and suggested fixes.
+"""
+
+[recommendations.metadata]
+skill_name = "review"
+skill_description = "Review code changes in isolated context"
 
 [[recommendations]]
 category = "hook"

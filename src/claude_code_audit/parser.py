@@ -284,9 +284,10 @@ def parse_session(file_path: Path, project_name: str) -> Session:
             session_context = entry.get("session_context")
             session.session_context = json.dumps(session_context)
             # Try to extract GitHub repo from session_context
-            repo = extract_repo_from_session_context(session_context)
-            if repo:
-                session.github_repo = repo
+            if isinstance(session_context, dict):
+                repo = extract_repo_from_session_context(session_context)
+                if repo:
+                    session.github_repo = repo
 
         # Extract title if present
         if not session.title and entry.get("title"):

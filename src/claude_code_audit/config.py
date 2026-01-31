@@ -4,18 +4,18 @@ import json
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "claude-code-archive"
+DEFAULT_CONFIG_DIR = Path.home() / ".config" / "claude-code-audit"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
 DEFAULT_CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 
 def get_default_archive_dir() -> Path:
     """Get the default archive directory."""
-    return Path.home() / "Development" / "claude-code-archive" / "archive"
+    return Path.home() / "Development" / "claude-code-audit" / "archive"
 
 
 class Config:
-    """Configuration for claude-code-archive."""
+    """Configuration for claude-code-audit."""
 
     def __init__(
         self,

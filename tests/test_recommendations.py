@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_code_archive.analyzer.recommendations import (
+from claude_code_audit.analyzer.recommendations import (
     Recommendation,
     RecommendationCategory,
     RecommendationGenerator,
@@ -224,7 +224,7 @@ invalid toml syntax here
         synthesis_path = tmp_path / "global-synthesis.md"
         synthesis_path.write_text(synthesis_content)
 
-        with pytest.raises(ValueError, match="Invalid TOML"):
+        with pytest.raises(ValueError, match="No valid recommendations found"):
             parse_recommendations_from_synthesis(synthesis_path)
 
     def test_parse_unknown_category_defaults_to_workflow(self, tmp_path):

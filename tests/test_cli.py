@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from claude_code_archive.cli import main
+from claude_code_audit.cli import main
 
 
 @pytest.fixture

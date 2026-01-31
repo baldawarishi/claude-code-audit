@@ -460,5 +460,5 @@ def test_prompt_includes_prioritization_guidelines():
 
 - [Agent SDK Python Reference](https://platform.claude.com/docs/en/agent-sdk/python)
 - [GitHub: claude-agent-sdk-python](https://github.com/anthropics/claude-agent-sdk-python)
-- Current implementation: `src/claude_code_archive/analyzer/classifier.py`
-- Prompt template: `src/claude_code_archive/prompts/classification.md`
+- Current implementation: `src/claude_code_audit/analyzer/classifier.py`
+- Prompt template: `src/claude_code_audit/prompts/classification.md`

@@ -61,7 +61,7 @@ Each project analysis file must include:
 Format should support:
 - Human review (readable markdown)
 - Claude analysis (structured enough to parse)
-- Future Phase 3c of /Users/rishibaldawa/Development/claude-code-archive/docs/analyzer-design.md
+- Future Phase 3c of /Users/rishibaldawa/Development/claude-code-audit/docs/analyzer-design.md
 
 ## Implementation Details
 
@@ -234,11 +234,11 @@ thinking = "thinking content (if available)"
 4. Show progress: "Analyzing project 1/3: repo-drift..."
 5. Output to `archive/analysis/run-{timestamp}/{project}.md`
 
-**Prompt template:** See `src/claude_code_archive/prompts/session_analysis.md` (to be created)
+**Prompt template:** See `src/claude_code_audit/prompts/session_analysis.md` (to be created)
 
 ## Related Files
 
 - `docs/analyzer-issues.md` - Problems with current analyzer
 - `docs/analyzer-research.md` - Academic research on pattern mining
 - `docs/analyzer-design.md` - Original analyzer design (Phase 3c reference)
-- `src/claude_code_archive/analyzer/` - Current analyzer code (to be replaced/simplified)
+- `src/claude_code_audit/analyzer/` - Current analyzer code (to be replaced/simplified)

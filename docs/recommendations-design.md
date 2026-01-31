@@ -51,9 +51,9 @@ This document describes how to translate those findings into actionable recommen
 ## Current State
 
 All three phases are implemented:
-- `claude-code-archive analyze` - runs per-project analysis
-- `claude-code-archive analyze --synthesize <dir>` - runs global synthesis with structured TOML output
-- `claude-code-archive analyze --recommend <file>` - generates actionable outputs from synthesis
+- `claude-code-audit analyze` - runs per-project analysis
+- `claude-code-audit analyze --synthesize <dir>` - runs global synthesis with structured TOML output
+- `claude-code-audit analyze --recommend <file>` - generates actionable outputs from synthesis
 
 ## Recommendation Categories
 
@@ -312,7 +312,7 @@ class Recommendation:
     metadata: dict  # Category-specific metadata (skill_name, helper_script, etc.)
 ```
 
-Usage: `claude-code-archive analyze --recommend <path/to/global-synthesis.md>`
+Usage: `claude-code-audit analyze --recommend <path/to/global-synthesis.md>`
 
 ### 3.2 Generate Actionable Output
 
@@ -357,7 +357,7 @@ Track which recommendations have been applied:
 - Analysis output: `archive/analysis/run-{timestamp}/`
 - Per-project files: `archive/analysis/run-{timestamp}/{project}.md`
 - Global synthesis: `archive/analysis/run-{timestamp}/global-synthesis.md`
-- Prompts: `src/claude_code_archive/prompts/`
+- Prompts: `src/claude_code_audit/prompts/`
   - `session_analysis.md` - Per-project analysis prompt
   - `global_synthesis.md` - Cross-project synthesis prompt
 
@@ -388,4 +388,4 @@ Total recoverable waste: ~128,000 tokens across 6 recommendations.
 
 - `docs/session-analysis-plan.md` - Experiment workflow and status
 - `docs/analyzer-research.md` - Academic research on pattern mining (archived)
-- `src/claude_code_archive/analyzer/session_analyzer.py` - Implementation
+- `src/claude_code_audit/analyzer/session_analyzer.py` - Implementation

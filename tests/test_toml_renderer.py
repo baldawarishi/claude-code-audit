@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_code_archive.models import Message, Session, ToolCall, ToolResult
-from claude_code_archive.toml_renderer import (
+from claude_code_audit.models import Message, Session, ToolCall, ToolResult
+from claude_code_audit.toml_renderer import (
     escape_toml_string,
     format_timestamp,
     render_session_toml,

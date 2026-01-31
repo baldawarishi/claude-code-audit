@@ -759,7 +759,7 @@ def _run_global_synthesis(ctx, cfg: Config, analysis_dir: Path):
     try:
         asyncio.run(run_synthesis())
         click.echo()
-        click.echo(f"Synthesis complete.")
+        click.echo("Synthesis complete.")
     except ValueError as e:
         if "ANTHROPIC_API_KEY" in str(e):
             click.echo(f"\nError: {e}")

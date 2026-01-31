@@ -169,7 +169,7 @@ def parse_recommendations_from_synthesis(synthesis_path: Path) -> list[Recommend
     if not all_recommendations_data:
         if parse_warnings:
             raise ValueError(
-                f"No valid recommendations found. TOML parse errors:\n"
+                "No valid recommendations found. TOML parse errors:\n"
                 + "\n".join(parse_warnings)
             )
         raise ValueError("No recommendations found in any TOML block")
@@ -272,7 +272,6 @@ class RecommendationGenerator:
     def _generate_skill(self, rec: Recommendation) -> Path:
         """Generate skill definition file."""
         skill_name = rec.metadata.get("skill_name", "custom-skill")
-        skill_desc = rec.metadata.get("skill_description", rec.title)
 
         output = f"""# Skill Recommendation: /{skill_name}
 

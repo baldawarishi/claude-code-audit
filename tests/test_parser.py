@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 
-from claude_code_archive.parser import (
+from claude_code_audit.parser import (
     extract_text_content,
     extract_thinking_content,
     extract_tool_calls,
@@ -17,7 +17,7 @@ from claude_code_archive.parser import (
     is_warmup_session,
     is_sidechain_session,
 )
-from claude_code_archive.models import Session, Message
+from claude_code_audit.models import Session, Message
 
 
 class TestExtractTextContent:

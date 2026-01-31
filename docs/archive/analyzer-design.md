@@ -33,7 +33,7 @@ The analyzer detects repeated patterns in Claude Code sessions and generates act
 ## Module Structure
 
 ```
-src/claude_code_archive/
+src/claude_code_audit/
 ├── analyzer/
 │   ├── __init__.py       # Exports main analyze() function
 │   ├── patterns.py       # Phase 1: pattern detection
@@ -66,7 +66,7 @@ dev-dependencies = [
 ## CLI Interface
 
 ```bash
-claude-code-archive analyze \
+claude-code-audit analyze \
   [--archive-dir PATH] \
   [--project TEXT] \
   [--since DATE] \
@@ -312,7 +312,7 @@ class AnalyzerClaudeClient:
 
 ### 2.2 Classification Prompt
 
-Load from `src/claude_code_archive/prompts/classification.md`.
+Load from `src/claude_code_audit/prompts/classification.md`.
 
 Template with `{placeholders}`:
 - `{patterns_json}` - The raw patterns from Phase 1
@@ -472,7 +472,7 @@ For LLM tests, mock `ClaudeSDKClient`:
 ```python
 @pytest.fixture
 def mock_claude_client(mocker):
-    mock = mocker.patch('claude_code_archive.analyzer.claude_client.ClaudeSDKClient')
+    mock = mocker.patch('claude_code_audit.analyzer.claude_client.ClaudeSDKClient')
     # Configure mock responses
     return mock
 ```

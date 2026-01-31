@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from claude_code_archive.analyzer.session_analyzer import (
+from claude_code_audit.analyzer.session_analyzer import (
     SessionAnalyzer,
     build_session_analysis_prompt,
     load_session_analysis_template,

@@ -1,1 +1,1 @@
-"""Tests for claude-code-archive."""
+"""Tests for claude-code-audit."""

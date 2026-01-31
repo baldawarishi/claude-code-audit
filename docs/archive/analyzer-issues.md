@@ -219,10 +219,10 @@ Most prompt phrases are noise ("the", "and then", "please").
 
 ```bash
 # Check current pattern counts
-claude-code-archive analyze --archive-dir ./archive --patterns-only
+claude-code-audit analyze --archive-dir ./archive --patterns-only
 
 # Full analysis
-claude-code-archive analyze --archive-dir ./archive
+claude-code-audit analyze --archive-dir ./archive
 
 # Check Bash command breakdown
 sqlite3 ./archive/sessions.db "SELECT COUNT(*) FROM tool_calls WHERE tool_name = 'Bash' AND input_json LIKE '%grep%'"
@@ -231,7 +231,7 @@ sqlite3 ./archive/sessions.db "SELECT input_json FROM tool_calls WHERE tool_name
 
 ## Related Files
 
-- `src/claude_code_archive/analyzer/patterns.py` - Pattern detection logic
-- `src/claude_code_archive/analyzer/classifier.py` - LLM classification
-- `src/claude_code_archive/prompts/classification.md` - Classification prompt
+- `src/claude_code_audit/analyzer/patterns.py` - Pattern detection logic
+- `src/claude_code_audit/analyzer/classifier.py` - LLM classification
+- `src/claude_code_audit/prompts/classification.md` - Classification prompt
 - `docs/analyzer-improvements.md` - Previous improvement investigation

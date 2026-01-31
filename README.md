@@ -1,4 +1,4 @@
-# claude-code-archive
+# claude-code-audit
 
 Archive Claude Code transcripts in a structured, analyzable format.
 
@@ -7,7 +7,7 @@ Inspired by [simonw/claude-code-transcripts](https://github.com/simonw/claude-co
 ## Installation
 
 ```bash
-cd ~/Development/claude-code-archive
+cd ~/Development/claude-code-audit
 uv sync
 ```
 
@@ -15,38 +15,38 @@ uv sync
 
 ```bash
 # Archive all sessions to SQLite (incremental - skips already archived)
-uv run claude-code-archive sync
+uv run claude-code-audit sync
 
 # Archive specific project
-uv run claude-code-archive sync --project my-project
+uv run claude-code-audit sync --project my-project
 
 # Force re-archive existing sessions
-uv run claude-code-archive sync --force
+uv run claude-code-audit sync --force
 
 # Render sessions as TOML transcripts
-uv run claude-code-archive render
+uv run claude-code-audit render
 
 # Render specific session to stdout
-uv run claude-code-archive render --session 2619c35b --stdout
+uv run claude-code-audit render --session 2619c35b --stdout
 
 # Render all sessions for a project
-uv run claude-code-archive render --project java
+uv run claude-code-audit render --project java
 
 # Show archive statistics
-uv run claude-code-archive stats
+uv run claude-code-audit stats
 
 # Analyze sessions (per-project analysis with Claude)
-uv run claude-code-archive analyze
+uv run claude-code-audit analyze
 
 # Synthesize cross-project patterns from analysis
-uv run claude-code-archive analyze --synthesize archive/analysis/run-YYYYMMDD-HHMMSS
+uv run claude-code-audit analyze --synthesize archive/analysis/run-YYYYMMDD-HHMMSS
 
 # Generate recommendation files from synthesis
-uv run claude-code-archive analyze --recommend archive/analysis/run-YYYYMMDD-HHMMSS/global-synthesis.md
+uv run claude-code-audit analyze --recommend archive/analysis/run-YYYYMMDD-HHMMSS/global-synthesis.md
 
 # Configure archive/projects directories
-uv run claude-code-archive config --archive-dir /path/to/archive
-uv run claude-code-archive config --show
+uv run claude-code-audit config --archive-dir /path/to/archive
+uv run claude-code-audit config --show
 ```
 
 ## Output
@@ -61,7 +61,7 @@ uv run claude-code-archive config --show
 
 ## Configuration
 
-Settings are stored in `~/.config/claude-code-archive/config.json`:
+Settings are stored in `~/.config/claude-code-audit/config.json`:
 
 ```json
 {

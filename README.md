@@ -15,35 +15,49 @@ uv sync
 
 ```bash
 # Archive all sessions to SQLite (incremental - skips already archived)
-claude-code-archive sync
+uv run claude-code-archive sync
 
 # Archive specific project
-claude-code-archive sync --project my-project
+uv run claude-code-archive sync --project my-project
 
 # Force re-archive existing sessions
-claude-code-archive sync --force
+uv run claude-code-archive sync --force
 
 # Render sessions as TOML transcripts
-claude-code-archive render
+uv run claude-code-archive render
 
 # Render specific session to stdout
-claude-code-archive render --session 2619c35b --stdout
+uv run claude-code-archive render --session 2619c35b --stdout
 
 # Render all sessions for a project
-claude-code-archive render --project java
+uv run claude-code-archive render --project java
 
 # Show archive statistics
-claude-code-archive stats
+uv run claude-code-archive stats
+
+# Analyze sessions (per-project analysis with Claude)
+uv run claude-code-archive analyze
+
+# Synthesize cross-project patterns from analysis
+uv run claude-code-archive analyze --synthesize archive/analysis/run-YYYYMMDD-HHMMSS
+
+# Generate recommendation files from synthesis
+uv run claude-code-archive analyze --recommend archive/analysis/run-YYYYMMDD-HHMMSS/global-synthesis.md
 
 # Configure archive/projects directories
-claude-code-archive config --archive-dir /path/to/archive
-claude-code-archive config --show
+uv run claude-code-archive config --archive-dir /path/to/archive
+uv run claude-code-archive config --show
 ```
 
 ## Output
 
 - `archive/sessions.db` - SQLite database (primary storage)
-- `archive/transcripts/{project}/{date}-{session-id}.toml` - TOML transcripts (on-demand via `render`)
+- `archive/transcripts/{project}/{date}-{session-id}.toml` - TOML transcripts
+- `archive/analysis/run-{timestamp}/` - Analysis outputs:
+  - `{project}.md` - Per-project session analysis
+  - `global-synthesis.md` - Cross-project patterns with TOML recommendations
+  - `validation-report.md` - Quality gate results
+  - `recommendations/` - Generated recommendation files
 
 ## Configuration
 

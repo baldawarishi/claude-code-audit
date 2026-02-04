@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_code_audit.database import Database
-from claude_code_audit.models import Commit, Message, Session, ToolCall, ToolResult
+from agent_audit.database import Database
+from agent_audit.models import Commit, Message, Session, ToolCall, ToolResult
 
 
 @pytest.fixture

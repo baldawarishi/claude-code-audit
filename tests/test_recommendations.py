@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_code_audit.analyzer.recommendations import (
+from agent_audit.analyzer.recommendations import (
     Recommendation,
     RecommendationCategory,
     RecommendationGenerator,

@@ -1,4 +1,4 @@
-# claude-code-audit
+# Agent Audit
 
 Archive Claude Code transcripts in a structured, analyzable format.
 
@@ -7,7 +7,7 @@ Inspired by [simonw/claude-code-transcripts](https://github.com/simonw/claude-co
 ## Installation
 
 ```bash
-cd claude-code-audit
+cd agent-audit
 uv sync
 ```
 
@@ -15,38 +15,38 @@ uv sync
 
 ```bash
 # Archive all sessions to SQLite (incremental - skips already archived)
-uv run claude-code-audit sync
+uv run agent-audit sync
 
 # Archive specific project
-uv run claude-code-audit sync --project my-project
+uv run agent-audit sync --project my-project
 
 # Force re-archive existing sessions
-uv run claude-code-audit sync --force
+uv run agent-audit sync --force
 
 # Render sessions as TOML transcripts
-uv run claude-code-audit render
+uv run agent-audit render
 
 # Render specific session to stdout
-uv run claude-code-audit render --session 2619c35b --stdout
+uv run agent-audit render --session 2619c35b --stdout
 
 # Render all sessions for a project
-uv run claude-code-audit render --project java
+uv run agent-audit render --project java
 
 # Show archive statistics
-uv run claude-code-audit stats
+uv run agent-audit stats
 
 # Analyze sessions (per-project analysis with Claude)
-uv run claude-code-audit analyze
+uv run agent-audit analyze
 
 # Synthesize cross-project patterns from analysis
-uv run claude-code-audit analyze --synthesize archive/analysis/run-YYYYMMDD-HHMMSS
+uv run agent-audit analyze --synthesize archive/analysis/run-YYYYMMDD-HHMMSS
 
 # Generate recommendation files from synthesis
-uv run claude-code-audit analyze --recommend archive/analysis/run-YYYYMMDD-HHMMSS/global-synthesis.md
+uv run agent-audit analyze --recommend archive/analysis/run-YYYYMMDD-HHMMSS/global-synthesis.md
 
 # Configure archive/projects directories
-uv run claude-code-audit config --archive-dir /path/to/archive
-uv run claude-code-audit config --show
+uv run agent-audit config --archive-dir /path/to/archive
+uv run agent-audit config --show
 ```
 
 ## Output
@@ -61,7 +61,7 @@ uv run claude-code-audit config --show
 
 ## Configuration
 
-Settings are stored in `~/.config/claude-code-audit/config.json`:
+Settings are stored in `~/.config/agent-audit/config.json`:
 
 ```json
 {

@@ -27,7 +27,7 @@ jobs:
         run: uv run pytest -v
 
       - name: Type check
-        run: uv run mypy src/claude_code_audit --ignore-missing-imports
+        run: uv run mypy src/agent_audit --ignore-missing-imports
 
   lint:
     runs-on: ubuntu-latest

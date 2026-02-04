@@ -1,4 +1,4 @@
-"""Configuration management for Claude Code archive."""
+"""Configuration management for Agent Audit."""
 
 import json
 from pathlib import Path
@@ -6,7 +6,7 @@ from typing import Optional
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent.parent  # TODO fix this
 
-DEFAULT_CONFIG_DIR = PACKAGE_ROOT / ".config" / "claude-code-audit"
+DEFAULT_CONFIG_DIR = PACKAGE_ROOT / ".config" / "agent-audit"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
 DEFAULT_CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
@@ -17,7 +17,7 @@ def get_default_archive_dir() -> Path:
 
 
 class Config:
-    """Configuration for claude-code-audit."""
+    """Configuration for Agent Audit."""
 
     def __init__(
         self,

@@ -1,1 +1,1 @@
-"""Tests for claude-code-audit."""
+"""Tests for Agent Audit."""

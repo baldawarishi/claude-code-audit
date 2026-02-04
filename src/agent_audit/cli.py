@@ -1,4 +1,4 @@
-"""CLI for Claude Code archive."""
+"""CLI for Agent Audit."""
 
 from datetime import datetime
 from pathlib import Path

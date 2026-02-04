@@ -11,6 +11,7 @@ SCHEMA_TABLES = """
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     project TEXT,
+    agent_type TEXT DEFAULT 'claude-code',
     cwd TEXT,
     git_branch TEXT,
     slug TEXT,
@@ -84,6 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_github_repo ON sessions(github_repo);
+CREATE INDEX IF NOT EXISTS idx_sessions_agent_type ON sessions(agent_type);
 CREATE INDEX IF NOT EXISTS idx_commits_session ON commits(session_id);
 CREATE INDEX IF NOT EXISTS idx_commits_hash ON commits(commit_hash);
 """
@@ -117,6 +119,9 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_sessions_github_repo ON sessions(github_repo)",
     "CREATE INDEX IF NOT EXISTS idx_commits_session ON commits(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_commits_hash ON commits(commit_hash)",
+    # Phase 5: Multi-agent support (Codex, etc.)
+    "ALTER TABLE sessions ADD COLUMN agent_type TEXT DEFAULT 'claude-code'",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_agent_type ON sessions(agent_type)",
 ]
 
 
@@ -173,14 +178,15 @@ class Database:
         conn.execute(
             """
             INSERT OR REPLACE INTO sessions
-            (id, project, cwd, git_branch, slug, summary, title, parent_session_id, started_at, ended_at,
+            (id, project, agent_type, cwd, git_branch, slug, summary, title, parent_session_id, started_at, ended_at,
              claude_version, total_input_tokens, total_output_tokens, total_cache_read_tokens, model,
              is_warmup, is_sidechain, github_repo, session_context)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session.id,
                 session.project,
+                session.agent_type,
                 session.cwd,
                 session.git_branch,
                 session.slug,

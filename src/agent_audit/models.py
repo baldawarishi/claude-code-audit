@@ -71,10 +71,11 @@ class Message:
 
 @dataclass
 class Session:
-    """Represents a Claude Code session."""
+    """Represents a coding agent session (Claude Code, Codex, etc.)."""
 
     id: str
     project: str
+    agent_type: str = "claude-code"  # "claude-code" or "codex"
     cwd: Optional[str] = None
     git_branch: Optional[str] = None
     slug: Optional[str] = None
@@ -82,7 +83,7 @@ class Session:
     title: Optional[str] = None  # Session title (from web API or derived)
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
-    claude_version: Optional[str] = None
+    claude_version: Optional[str] = None  # Also used for codex CLI version
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_cache_read_tokens: int = 0

@@ -9,10 +9,15 @@ import click
 from .config import Config
 from .database import Database
 from .parser import (
-    discover_sessions,
+    discover_sessions as discover_claude_sessions,
     get_project_name_from_dir,
-    parse_session,
+    parse_session as parse_claude_session,
     is_tmp_directory,
+)
+from .codex_parser import (
+    discover_codex_sessions,
+    parse_codex_session,
+    get_codex_home,
 )
 from .toml_renderer import render_session_to_file as render_toml_file
 from .toml_renderer import render_session_toml
@@ -72,6 +77,12 @@ def main(ctx, config: Optional[Path]):
     is_flag=True,
     help="Include warmup/sidechain sessions (excluded by default)",
 )
+@click.option(
+    "--source",
+    type=click.Choice(["all", "claude-code", "codex"]),
+    default="all",
+    help="Which agent source to sync (default: all)",
+)
 @click.pass_context
 def sync(
     ctx,
@@ -82,8 +93,9 @@ def sync(
     include_tmp_directories: bool,
     no_toml: bool,
     include_warmup: bool,
+    source: str,
 ):
-    """Sync sessions from Claude projects to the archive."""
+    """Sync sessions from Claude Code and Codex to the archive."""
     cfg: Config = ctx.obj["config"]
 
     if archive_dir:
@@ -100,59 +112,35 @@ def sync(
         synced = 0
         skipped = 0
         errors = 0
-
         tmp_skipped = 0
         warmup_skipped = 0
-        for jsonl_file, proj_name in discover_sessions(cfg.projects_dir):
-            # Get better project name from directory
-            proj_name = get_project_name_from_dir(jsonl_file.parent.name)
 
-            # Skip temp directories unless explicitly included
-            if not include_tmp_directories and is_tmp_directory(jsonl_file.parent.name):
-                tmp_skipped += 1
-                continue
+        # Sync Claude Code sessions
+        if source in ("all", "claude-code"):
+            click.echo("=== Syncing Claude Code sessions ===")
+            claude_synced, claude_skipped, claude_errors, claude_tmp, claude_warmup = _sync_claude_sessions(
+                db, cfg, existing_ids, project, include_tmp_directories, include_warmup, no_toml
+            )
+            synced += claude_synced
+            skipped += claude_skipped
+            errors += claude_errors
+            tmp_skipped += claude_tmp
+            warmup_skipped += claude_warmup
 
-            # Filter by project if specified
-            if project and proj_name != project:
-                continue
-
-            session_id = jsonl_file.stem
-            if session_id.startswith("agent-"):
-                session_id = session_id[6:]
-
-            if session_id in existing_ids:
-                skipped += 1
-                continue
-
-            try:
-                click.echo(f"Parsing {jsonl_file.name}...", nl=False)
-                session = parse_session(jsonl_file, proj_name)
-
-                # Skip sessions with no messages
-                if not session.messages:
-                    click.echo(" (empty, skipping)")
-                    skipped += 1
-                    continue
-
-                # Skip warmup/sidechain sessions unless explicitly included
-                if not include_warmup and (session.is_warmup or session.is_sidechain):
-                    click.echo(" (warmup/sidechain, skipping)")
-                    warmup_skipped += 1
-                    continue
-
-                # Insert into database
-                db.insert_session(session)
-
-                # Render TOML transcript unless --no-toml
-                if not no_toml:
-                    render_toml_file(session, cfg.toml_dir)
-
-                click.echo(" done")
-
-                synced += 1
-            except Exception as e:
-                click.echo(f" ERROR: {e}")
-                errors += 1
+        # Sync Codex sessions
+        if source in ("all", "codex"):
+            click.echo("\n=== Syncing Codex sessions ===")
+            codex_home = get_codex_home()
+            if codex_home.exists():
+                codex_synced, codex_skipped, codex_errors, codex_warmup = _sync_codex_sessions(
+                    db, cfg, existing_ids, project, include_warmup, no_toml
+                )
+                synced += codex_synced
+                skipped += codex_skipped
+                errors += codex_errors
+                warmup_skipped += codex_warmup
+            else:
+                click.echo(f"  Codex home not found: {codex_home}")
 
         click.echo(f"\nDone: {synced} synced, {skipped} skipped, {errors} errors")
         if tmp_skipped > 0:
@@ -168,6 +156,134 @@ def sync(
         click.echo(f"  Tool calls: {stats['total_tool_calls']}")
         click.echo(f"  Input tokens: {stats['total_input_tokens']:,}")
         click.echo(f"  Output tokens: {stats['total_output_tokens']:,}")
+
+
+def _sync_claude_sessions(
+    db: Database,
+    cfg: Config,
+    existing_ids: set,
+    project: Optional[str],
+    include_tmp_directories: bool,
+    include_warmup: bool,
+    no_toml: bool,
+) -> tuple[int, int, int, int, int]:
+    """Sync Claude Code sessions. Returns (synced, skipped, errors, tmp_skipped, warmup_skipped)."""
+    synced = 0
+    skipped = 0
+    errors = 0
+    tmp_skipped = 0
+    warmup_skipped = 0
+
+    for jsonl_file, proj_name in discover_claude_sessions(cfg.projects_dir):
+        # Get better project name from directory
+        proj_name = get_project_name_from_dir(jsonl_file.parent.name)
+
+        # Skip temp directories unless explicitly included
+        if not include_tmp_directories and is_tmp_directory(jsonl_file.parent.name):
+            tmp_skipped += 1
+            continue
+
+        # Filter by project if specified
+        if project and proj_name != project:
+            continue
+
+        session_id = jsonl_file.stem
+        if session_id.startswith("agent-"):
+            session_id = session_id[6:]
+
+        if session_id in existing_ids:
+            skipped += 1
+            continue
+
+        try:
+            click.echo(f"  Parsing {jsonl_file.name}...", nl=False)
+            session = parse_claude_session(jsonl_file, proj_name)
+
+            # Skip sessions with no messages
+            if not session.messages:
+                click.echo(" (empty, skipping)")
+                skipped += 1
+                continue
+
+            # Skip warmup/sidechain sessions unless explicitly included
+            if not include_warmup and (session.is_warmup or session.is_sidechain):
+                click.echo(" (warmup/sidechain, skipping)")
+                warmup_skipped += 1
+                continue
+
+            # Insert into database
+            db.insert_session(session)
+
+            # Render TOML transcript unless --no-toml
+            if not no_toml:
+                render_toml_file(session, cfg.toml_dir)
+
+            click.echo(" done")
+            synced += 1
+        except Exception as e:
+            click.echo(f" ERROR: {e}")
+            errors += 1
+
+    return synced, skipped, errors, tmp_skipped, warmup_skipped
+
+
+def _sync_codex_sessions(
+    db: Database,
+    cfg: Config,
+    existing_ids: set,
+    project: Optional[str],
+    include_warmup: bool,
+    no_toml: bool,
+) -> tuple[int, int, int, int]:
+    """Sync Codex sessions. Returns (synced, skipped, errors, warmup_skipped)."""
+    synced = 0
+    skipped = 0
+    errors = 0
+    warmup_skipped = 0
+
+    for rollout_file, proj_name in discover_codex_sessions():
+        # Filter by project if specified
+        if project and proj_name != project:
+            continue
+
+        # Extract session ID from filename
+        from .codex_parser import get_session_id_from_filename
+        session_id = get_session_id_from_filename(rollout_file) or rollout_file.stem
+
+        if session_id in existing_ids:
+            skipped += 1
+            continue
+
+        try:
+            click.echo(f"  Parsing {rollout_file.name}...", nl=False)
+            session = parse_codex_session(rollout_file, proj_name)
+
+            # Skip sessions with no messages
+            if not session.messages:
+                click.echo(" (empty, skipping)")
+                skipped += 1
+                continue
+
+            # Skip warmup sessions unless explicitly included
+            if not include_warmup and session.is_warmup:
+                click.echo(" (warmup, skipping)")
+                warmup_skipped += 1
+                continue
+
+            # Insert into database
+            db.insert_session(session)
+
+            # Render TOML transcript unless --no-toml
+            if not no_toml:
+                render_toml_file(session, cfg.toml_dir)
+
+            click.echo(" done")
+            synced += 1
+        except Exception as e:
+            click.echo(f" ERROR: {e}")
+            errors += 1
+
+    return synced, skipped, errors, warmup_skipped
 
 
 @main.command()

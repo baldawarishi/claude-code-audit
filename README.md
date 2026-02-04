@@ -1,8 +1,8 @@
 # Agent Audit
 
-Archive Claude Code transcripts in a structured, analyzable format.
+Archive Claude Code and Codex CLI transcripts in a structured, analyzable format.
 
-Inspired by [simonw/claude-code-transcripts](https://github.com/simonw/claude-code-transcripts).
+Inspired by [simonw/claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) and [prateek/codex-transcripts](https://github.com/prateek/codex-transcripts).
 
 ## Installation
 
@@ -14,8 +14,12 @@ uv sync
 ## Usage
 
 ```bash
-# Archive all sessions to SQLite (incremental - skips already archived)
+# Archive all sessions to SQLite (syncs both Claude Code and Codex by default)
 uv run agent-audit sync
+
+# Sync only one source
+uv run agent-audit sync --source claude-code
+uv run agent-audit sync --source codex
 
 # Archive specific project
 uv run agent-audit sync --project my-project
@@ -69,3 +73,7 @@ Settings are stored in `~/.config/agent-audit/config.json`:
   "projects_dir": "~/.claude/projects"
 }
 ```
+
+Session sources:
+- **Claude Code**: `~/.claude/projects/`
+- **Codex CLI**: `~/.codex/sessions/` (or `$CODEX_HOME/sessions/`)

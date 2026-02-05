@@ -212,7 +212,7 @@ def parse_codex_session(file_path: Path, project_name: str) -> Session:
             if item_type in ("function_call", "custom_tool_call", "local_shell_call"):
                 msg_id = str(uuid.uuid4())
                 call_id = payload.get("call_id", "")
-                name = payload.get("name", item_type)
+                name = payload.get("name") or item_type
                 arguments = payload.get("arguments", payload.get("input", ""))
 
                 # Parse arguments if JSON string
@@ -377,12 +377,11 @@ def _process_session_meta(session: Session, payload: dict) -> None:
     if isinstance(git_info, dict):
         if git_info.get("branch"):
             session.git_branch = git_info.get("branch")
-        if git_info.get("repository_url"):
-            repo_url = git_info.get("repository_url")
-            if "github.com" in repo_url:
-                match = re.search(r"github\.com[/:]([^/]+/[^/]+?)(?:\.git)?$", repo_url)
-                if match:
-                    session.github_repo = match.group(1)
+        repo_url = git_info.get("repository_url")
+        if isinstance(repo_url, str) and "github.com" in repo_url:
+            match = re.search(r"github\.com[/:]([^/]+/[^/]+?)(?:\.git)?$", repo_url)
+            if match:
+                session.github_repo = match.group(1)
 
 
 def _extract_text_from_content(content: Any) -> str:

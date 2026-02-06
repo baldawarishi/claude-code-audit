@@ -1,15 +1,7 @@
-"""Integration tests for the full parse → store → retrieve → render pipeline.
-
-These tests exercise the critical path that every user depends on:
-JSONL file → parser → database → retrieval → TOML rendering.
-They catch boundary bugs (field mapping, NULL handling, type coercion)
-that unit tests on individual functions miss.
-
-Fixtures are written from the JSONL format spec, not reverse-engineered
-from reading the parser implementation.
-"""
+"""Tests for the full parse → store → retrieve → render pipeline."""
 
 import json
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -21,10 +13,6 @@ from agent_audit.parser import parse_session
 from agent_audit.codex_parser import parse_codex_session, get_session_id_from_filename
 from agent_audit.toml_renderer import render_session_toml
 
-
-# ---------------------------------------------------------------------------
-# Fixtures: realistic JSONL content derived from format spec, not from code
-# ---------------------------------------------------------------------------
 
 CLAUDE_SESSION_JSONL = [
     # First entry: user message with session metadata
@@ -203,7 +191,7 @@ def _write_jsonl(lines: list[dict], path: Path):
 
 
 @pytest.fixture
-def tmp_db():
+def db():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)
     db = Database(db_path)
@@ -213,17 +201,11 @@ def tmp_db():
     db_path.unlink()
 
 
-# ---------------------------------------------------------------------------
-# P1: Claude Code full pipeline
-# ---------------------------------------------------------------------------
-
-
 class TestClaudeCodePipeline:
     """End-to-end: JSONL → parse → store → retrieve → render."""
 
-    def test_full_roundtrip_preserves_all_fields(self, tmp_db):
-        """Parse a realistic session, store it, retrieve it, and verify
-        every field survives the round-trip without corruption."""
+    def test_full_roundtrip_preserves_all_fields(self, db):
+        """Every field survives the parse → store → retrieve round-trip."""
         with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
             jsonl_path = Path(f.name)
         _write_jsonl(CLAUDE_SESSION_JSONL, jsonl_path)
@@ -251,10 +233,10 @@ class TestClaudeCodePipeline:
         assert session.commits[0].commit_hash == "abc1234"
 
         # Store
-        tmp_db.insert_session(session)
+        db.insert_session(session)
 
         # Retrieve session
-        rows = tmp_db.get_all_sessions()
+        rows = db.get_all_sessions()
         assert len(rows) == 1
         retrieved = rows[0]
 
@@ -272,7 +254,7 @@ class TestClaudeCodePipeline:
         assert retrieved["total_output_tokens"] == 250
 
         # Retrieve messages and verify field integrity
-        messages = tmp_db.get_messages_for_session(session.id)
+        messages = db.get_messages_for_session(session.id)
         assert len(messages) == 4
         # First message is user
         assert messages[0]["type"] == "user"
@@ -284,18 +266,18 @@ class TestClaudeCodePipeline:
         assert messages[1]["model"] == "claude-opus-4-5-20251101"
 
         # Retrieve tool calls
-        tool_calls = tmp_db.get_tool_calls_for_session(session.id)
+        tool_calls = db.get_tool_calls_for_session(session.id)
         assert len(tool_calls) == 1
         assert tool_calls[0]["tool_name"] == "Write"
         assert json.loads(tool_calls[0]["input_json"])["file_path"] == "/home/dev/myproject/login.tsx"
 
         # Retrieve commits
-        commits = tmp_db.get_commits_for_session(session.id)
+        commits = db.get_commits_for_session(session.id)
         assert len(commits) == 1
         assert commits[0]["commit_hash"] == "abc1234"
         assert "login page" in commits[0]["message"].lower()
 
-    def test_rendered_toml_contains_key_content(self, tmp_db):
+    def test_rendered_toml_contains_key_content(self, db):
         """After round-trip, TOML rendering includes all critical content."""
         with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
             jsonl_path = Path(f.name)
@@ -314,15 +296,10 @@ class TestClaudeCodePipeline:
         assert 'parent_session_id = "parent-session-abc"' in toml
 
 
-# ---------------------------------------------------------------------------
-# P1: Codex full pipeline
-# ---------------------------------------------------------------------------
-
-
 class TestCodexPipeline:
     """End-to-end: Codex rollout JSONL → parse → store → retrieve."""
 
-    def test_full_roundtrip_preserves_all_fields(self, tmp_db):
+    def test_full_roundtrip_preserves_all_fields(self, db):
         """Parse a Codex rollout, store it, retrieve it, verify integrity."""
         with tempfile.NamedTemporaryFile(
             prefix="rollout-2026-02-01T09-00-00-",
@@ -367,8 +344,8 @@ class TestCodexPipeline:
         assert session.is_warmup is False
 
         # Store and retrieve
-        tmp_db.insert_session(session)
-        rows = tmp_db.get_all_sessions()
+        db.insert_session(session)
+        rows = db.get_all_sessions()
         assert len(rows) == 1
         retrieved = rows[0]
         assert retrieved["agent_type"] == "codex"
@@ -420,25 +397,15 @@ class TestCodexPipeline:
         assert session.is_warmup is False
 
 
-# ---------------------------------------------------------------------------
-# P2: Regression tests for bugs that actually shipped
-# ---------------------------------------------------------------------------
-
-
 class TestRegressionBugs:
     """Tests derived from real bugs found in git history."""
 
     def test_migration_on_old_schema_adds_new_columns(self):
-        """Regression for 250521c: opening a DB created with Phase 1 schema
-        must successfully apply migrations and allow full operations.
-
-        The original bug: migrations ran after index creation, causing
-        'no such column: github_repo' on existing databases."""
+        """Regression for 250521c: migrations must apply to Phase 1 schema."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = Path(f.name)
 
         # Create a database with only the original (minimal) schema
-        import sqlite3
         conn = sqlite3.connect(db_path)
         conn.executescript("""
             CREATE TABLE sessions (
@@ -536,12 +503,8 @@ class TestRegressionBugs:
         db.close()
         db_path.unlink()
 
-    def test_render_reconstruction_includes_all_session_fields(self, tmp_db):
-        """Regression for 57e69d6: the render command forgot parent_session_id
-        when reconstructing Session objects from the database.
-
-        Verify that every field set on a Session is still present after
-        the store → retrieve → reconstruct cycle used by the render command."""
+    def test_render_reconstruction_includes_all_session_fields(self, db):
+        """Regression for 57e69d6: all fields survive store → retrieve cycle."""
         session = Session(
             id="roundtrip-test",
             project="test-proj",
@@ -619,10 +582,10 @@ class TestRegressionBugs:
             ],
         )
 
-        tmp_db.insert_session(session)
+        db.insert_session(session)
 
         # Reconstruct exactly as the render command does (cli.py:360-434)
-        session_dict = tmp_db.get_all_sessions()[0]
+        session_dict = db.get_all_sessions()[0]
 
         # Session-level fields (the parent_session_id bug was here)
         assert session_dict["parent_session_id"] == "parent-999"
@@ -636,7 +599,7 @@ class TestRegressionBugs:
         assert session_dict["is_sidechain"] == 1
 
         # Message-level fields
-        messages = tmp_db.get_messages_for_session("roundtrip-test")
+        messages = db.get_messages_for_session("roundtrip-test")
         asst_msg = [m for m in messages if m["type"] == "assistant"][0]
         assert asst_msg["thinking"] == "Let me think"
         assert asst_msg["stop_reason"] == "end_turn"
@@ -646,14 +609,14 @@ class TestRegressionBugs:
         assert asst_msg["has_images"] == 1
 
         # Tool calls and results
-        tc = tmp_db.get_tool_calls_for_session("roundtrip-test")
+        tc = db.get_tool_calls_for_session("roundtrip-test")
         assert len(tc) == 1
         assert tc[0]["tool_name"] == "Bash"
 
-        tr = tmp_db.get_tool_results_for_session("roundtrip-test")
+        tr = db.get_tool_results_for_session("roundtrip-test")
         assert len(tr) == 1
         assert tr[0]["content"] == "file1.txt"
 
-        commits = tmp_db.get_commits_for_session("roundtrip-test")
+        commits = db.get_commits_for_session("roundtrip-test")
         assert len(commits) == 1
         assert commits[0]["commit_hash"] == "abc1234"

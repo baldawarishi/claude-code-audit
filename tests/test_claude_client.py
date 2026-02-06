@@ -1,8 +1,4 @@
-"""Tests for the Claude client JSON extraction utilities.
-
-These are static methods that parse LLM responses — the boundary between
-raw Claude output and structured data used by the analysis pipeline.
-"""
+"""Tests for Claude client JSON extraction."""
 
 import pytest
 

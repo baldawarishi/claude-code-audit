@@ -1,8 +1,4 @@
-"""Behavioral tests for the Codex parser.
-
-Tests are organized by observable behavior, not by internal function.
-Fixtures are derived from the Codex rollout JSONL format spec.
-"""
+"""Tests for Codex parser."""
 
 import json
 import tempfile
@@ -24,14 +20,8 @@ def _write_jsonl(lines: list[dict], path: Path):
             f.write(json.dumps(obj) + "\n")
 
 
-# ---------------------------------------------------------------------------
-# Behavior: user message deduplication
-# ---------------------------------------------------------------------------
-
-
 class TestUserMessageDeduplication:
-    """When the same user text appears in both event_msg and response_item,
-    the parser should produce exactly one user message."""
+    """Duplicate user messages from event_msg and response_item are deduplicated."""
 
     def test_duplicate_user_message_produces_single_entry(self):
         rollout = [
@@ -82,11 +72,6 @@ class TestUserMessageDeduplication:
 
         user_msgs = [m for m in session.messages if m.type == "user"]
         assert len(user_msgs) == 2
-
-
-# ---------------------------------------------------------------------------
-# Behavior: GitHub repo extraction from session_meta
-# ---------------------------------------------------------------------------
 
 
 class TestGitHubRepoExtraction:
@@ -146,11 +131,6 @@ class TestGitHubRepoExtraction:
         session = parse_codex_session(path, "proj")
         path.unlink()
         assert session.github_repo is None
-
-
-# ---------------------------------------------------------------------------
-# Behavior: tool call argument parsing handles multiple formats
-# ---------------------------------------------------------------------------
 
 
 class TestToolCallArgumentParsing:
@@ -231,11 +211,6 @@ class TestToolCallArgumentParsing:
         assert isinstance(parsed, dict)
 
 
-# ---------------------------------------------------------------------------
-# Behavior: error detection in tool results
-# ---------------------------------------------------------------------------
-
-
 class TestToolResultErrorDetection:
     def test_success_false_is_error(self):
         rollout = [
@@ -280,11 +255,6 @@ class TestToolResultErrorDetection:
 
         assert len(session.tool_results) == 1
         assert session.tool_results[0].is_error is False
-
-
-# ---------------------------------------------------------------------------
-# Behavior: session discovery and filename parsing
-# ---------------------------------------------------------------------------
 
 
 class TestSessionDiscovery:

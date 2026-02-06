@@ -1,10 +1,4 @@
-"""Tests for the TOML extraction/replacement utility functions in cli.py.
-
-These are pure functions with complex state-tracking logic (triple-quote
-awareness, truncation fallbacks) that define the contract between the CLI
-and the LLM output. They warrant direct testing because failures here
-cause the validation-fix loop to silently produce corrupt output.
-"""
+"""Tests for CLI TOML utility functions."""
 
 import pytest
 
@@ -14,11 +8,6 @@ from agent_audit.cli import (
     _parse_validation_toml,
     _format_validation_issues,
 )
-
-
-# ---------------------------------------------------------------------------
-# _extract_toml_from_synthesis
-# ---------------------------------------------------------------------------
 
 
 class TestExtractTomlFromSynthesis:
@@ -43,11 +32,6 @@ class TestExtractTomlFromSynthesis:
         assert _extract_toml_from_synthesis(doc) is None
 
 
-# ---------------------------------------------------------------------------
-# _replace_toml_in_synthesis: roundtrip property
-# ---------------------------------------------------------------------------
-
-
 class TestReplaceTomlInSynthesis:
     def test_extract_after_replace_returns_new_content(self):
         """The key property: extract(replace(doc, new)) == new."""
@@ -69,11 +53,6 @@ class TestReplaceTomlInSynthesis:
     def test_noop_when_no_toml_block(self):
         doc = "# No TOML\n\nJust text.\n"
         assert _replace_toml_in_synthesis(doc, "anything") == doc
-
-
-# ---------------------------------------------------------------------------
-# _parse_validation_toml
-# ---------------------------------------------------------------------------
 
 
 class TestParseValidationToml:
@@ -105,8 +84,7 @@ suggested_fix = "Add citations"
         assert len(result["review"]) == 2
 
     def test_truncates_at_unparseable_section(self):
-        """When TOML has an unparseable trailing section, the function
-        should truncate and return what it can parse."""
+        """Truncates at unparseable trailing section and returns what it can."""
         content = """```toml
 [validation]
 total_reviewed = 1
@@ -129,11 +107,6 @@ this is = invalid toml {{{
 
     def test_returns_none_for_no_toml(self):
         assert _parse_validation_toml("no toml here") is None
-
-
-# ---------------------------------------------------------------------------
-# _format_validation_issues
-# ---------------------------------------------------------------------------
 
 
 class TestFormatValidationIssues:

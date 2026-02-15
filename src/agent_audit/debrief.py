@@ -5,7 +5,7 @@ import re
 import shutil
 import subprocess
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -68,11 +68,22 @@ def gather_git_context(
 
     cmd = ["git", "log", "--oneline", "--no-decorate"]
     if start_date:
-        # Strip time component for git's --after flag
+        # Session timestamps are UTC but git interprets bare dates in local
+        # time.  Pad by 1 day so we don't miss commits near the boundary.
         after = start_date[:10] if len(start_date) >= 10 else start_date
+        try:
+            after_dt = datetime.fromisoformat(after)
+            after = (after_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
         cmd.extend(["--after", after])
     if end_date:
         before = end_date[:10] if len(end_date) >= 10 else end_date
+        try:
+            before_dt = datetime.fromisoformat(before)
+            before = (before_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
         cmd.extend(["--before", before])
 
     try:

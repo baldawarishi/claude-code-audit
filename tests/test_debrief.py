@@ -1256,6 +1256,28 @@ class TestGatherGitContext:
 
     @patch("agent_audit.debrief.subprocess.run")
     @patch("agent_audit.debrief.shutil.which")
+    def test_pads_date_range_by_one_day(self, mock_which, mock_run, tmp_path):
+        """Dates are padded ±1 day to handle UTC-to-local timezone gaps."""
+        mock_which.return_value = "/usr/bin/git"
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="abc1234 Fix bug\n",
+        )
+
+        gather_git_context(
+            cwd=str(tmp_path),
+            start_date="2026-02-11T06:34:11.977Z",
+            end_date="2026-02-12T05:23:26.517Z",
+        )
+
+        cmd = mock_run.call_args[0][0]
+        after_idx = cmd.index("--after")
+        before_idx = cmd.index("--before")
+        assert cmd[after_idx + 1] == "2026-02-10"  # padded back 1 day
+        assert cmd[before_idx + 1] == "2026-02-13"  # padded forward 1 day
+
+    @patch("agent_audit.debrief.subprocess.run")
+    @patch("agent_audit.debrief.shutil.which")
     def test_handles_subprocess_timeout(self, mock_which, mock_run, tmp_path):
         import subprocess
 
